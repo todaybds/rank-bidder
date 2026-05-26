@@ -45,7 +45,7 @@ python -m http.server 8080 --directory dashboard/public
 
 | Tool | Pin |
 |---|---|
-| Python | 3.13 (Lambda Provided.al2023 native) |
+| Python | 3.13 (Lambda AWS-managed `python3.13` runtime) |
 | uv | 0.11.16+ |
 | AWS SAM CLI | 1.155.2+ |
 | ruff | 0.11.x |
@@ -81,15 +81,16 @@ GitHub Actions Always Free public repo 2000 분/월 한도 안에서 운영 (NFR
 
 ## References
 
-기획 산출물 (모두 `c:/Users/ok/_bmad-output/planning-artifacts/` 하):
+📂 **기획 산출물은 repo 외부**(`c:/Users/ok/_bmad-output/`)에 보관. AI agent(Claude)가 로컬 FS에서 직접 참조하는 BMad workflow 산출물이라 repo로 끌어들이지 않는다 (NFR-8 단순성: 매 변경마다 동기화 비용 회피).
 
-- [PRD](../_bmad-output/planning-artifacts/prds/prd-rank-bidder-2026-05-27/prd.md) — 30 FR + 9 NFR
-- [Architecture](../_bmad-output/planning-artifacts/architectures/architecture-rank-bidder-2026-05-27/architecture.md) — D1~D30 + D15 (a~t) + I1~I8 invariants
-- [Epics & Stories](../_bmad-output/planning-artifacts/epics/epics-rank-bidder-2026-05-27/epics.md) — 6 Epic × 29 Stories
-- [Implementation Readiness](../_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-27.md) — READY
-- [Sprint Status](../_bmad-output/implementation-artifacts/sprint-status.yaml)
-- [Research](../_bmad-output/planning-artifacts/research/technical-naver-rank-bidder-feasibility-research-2026-05-27.md)
-- [Brief + addendum](../_bmad-output/planning-artifacts/briefs/brief-rank-bidder-2026-05-27/)
+로컬에서 참조할 경로:
+- `_bmad-output/planning-artifacts/prds/prd-rank-bidder-2026-05-27/prd.md` — PRD (30 FR + 9 NFR)
+- `_bmad-output/planning-artifacts/architectures/architecture-rank-bidder-2026-05-27/architecture.md` — Architecture (D1~D30 + D15 a~t + I1~I8)
+- `_bmad-output/planning-artifacts/epics/epics-rank-bidder-2026-05-27/epics.md` — Epics & Stories (6 × 29)
+- `_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-27.md` — Readiness 보고서
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — Sprint status
+- `_bmad-output/planning-artifacts/research/...` — 기술/도메인 research
+- `_bmad-output/planning-artifacts/briefs/...` — Brief + addendum
 
 ## Hard Constraints (Architecture §11 + NFR)
 

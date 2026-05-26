@@ -14,13 +14,13 @@ Globals:
     MemorySize: 512
     Runtime: python3.13
     Architectures:
-      - x86_64
+      - arm64
 
 Parameters:
   AuthTokenParameterName:
     Type: String
-    Default: /rank-bidder/lambda/auth-token
-    Description: SSM Parameter Store path for X-Auth-Token (SecureString)
+    Default: rank-bidder/lambda/auth-token
+    Description: SSM Parameter name WITHOUT leading slash. Handler prepends "/" before GetParameter.
 
 Resources:
   SerpMeasurerFunction:
@@ -31,10 +31,10 @@ Resources:
       Handler: handler.lambda_handler
       Environment:
         Variables:
-          AUTH_TOKEN_PARAMETER_NAME: !Ref AuthTokenParameterName
+          AUTH_TOKEN_PARAMETER_NAME: !Sub "/${AuthTokenParameterName}"
       Policies:
         - SSMParameterReadPolicy:
-            ParameterName: !Sub "rank-bidder/lambda/auth-token"
+            ParameterName: !Ref AuthTokenParameterName
       FunctionUrlConfig:
         AuthType: NONE
         InvokeMode: BUFFERED

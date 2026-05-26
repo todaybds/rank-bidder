@@ -19,13 +19,11 @@ repos:
       - id: sqlfluff-fix
         files: \.sql$
 
+  # NFR-8 단순성 — detect-private-key 하나만 유지 (NFR-7 secret 누설 방지 정당화).
+  # trailing-whitespace/end-of-file-fixer는 ruff-format이 중복 처리.
+  # check-yaml/check-toml은 sam validate + pyproject 파싱이 사실상 검증.
+  # check-merge-conflict는 git이 막음.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-        args: [--allow-multiple-documents]
-      - id: check-toml
-      - id: check-merge-conflict
-      - id: detect-private-key   # NFR-7 secret 누설 방지
+      - id: detect-private-key

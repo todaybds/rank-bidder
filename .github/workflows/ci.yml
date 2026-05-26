@@ -72,4 +72,4 @@ jobs:
 
       - name: SAM build
         working-directory: serp-measurer
-        run: sam build
+        run: sam build --use-container
