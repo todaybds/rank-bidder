@@ -1,0 +1,28 @@
+# SAM CLI config — Rank Bidder SERP Measurer
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+version = 0.1
+
+[default.global.parameters]
+stack_name = "rank-bidder-serp-measurer"
+region = "ap-northeast-2"  # NFR-6: 한국 IP 측정 (Lambda 리전 고정)
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+region = "ap-northeast-2"
+
+[default.package.parameters]
+resolve_s3 = true
+region = "ap-northeast-2"
+
+[default.sync.parameters]
+watch = true
+region = "ap-northeast-2"

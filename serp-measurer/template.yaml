@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  Rank Bidder — SERP Measurer
+  AWS Lambda function (한국 IP) that fetches 모바일 SERP for given keywords
+  and returns multi-sampled (N=3-5) chosen rank via Function URL (AuthType=NONE)
+  with X-Auth-Token verification (SSM SecureString).
+
+  Story 1.4가 실제 handler 코드를 채움. Story 1.1은 SAM skeleton만.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.13
+    Architectures:
+      - x86_64
+
+Parameters:
+  AuthTokenParameterName:
+    Type: String
+    Default: /rank-bidder/lambda/auth-token
+    Description: SSM Parameter Store path for X-Auth-Token (SecureString)
+
+Resources:
+  SerpMeasurerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rank-bidder-serp-measurer
+      CodeUri: src/measurer/
+      Handler: handler.lambda_handler
+      Environment:
+        Variables:
+          AUTH_TOKEN_PARAMETER_NAME: !Ref AuthTokenParameterName
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: !Sub "rank-bidder/lambda/auth-token"
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: BUFFERED
+
+Outputs:
+  SerpMeasurerFunctionUrl:
+    Description: Public Function URL (token verified inside handler)
+    Value: !GetAtt SerpMeasurerFunctionUrl.FunctionUrl
+  SerpMeasurerFunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt SerpMeasurerFunction.Arn

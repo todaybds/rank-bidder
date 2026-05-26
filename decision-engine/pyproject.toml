@@ -1,0 +1,39 @@
+[project]
+name = "decision-engine"
+version = "0.1.0"
+description = "Rank Bidder — Decision Engine (Oracle VM, FastAPI + SQLite + cron)"
+readme = "README.md"
+authors = [
+    { name = "todaybds", email = "166988086+todaybds@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.136,<0.200",
+    "httpx>=0.27,<1.0",
+    "apscheduler>=3.10,<4.0",
+    "boto3>=1.35,<2.0",
+    "python-dotenv>=1.0,<2.0",
+    "structlog>=24.4,<25.0",
+    "pyrate-limiter>=3.7,<4.0",
+    "tenacity>=9.0,<10.0",
+    "uuid-utils>=0.10,<1.0",
+    "psutil>=6.0,<7.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<9.0",
+    "ruff>=0.11,<1.0",
+    "sqlfluff>=3.2,<4.0",
+]
+
+[project.scripts]
+rank-bidder = "rank_bidder.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "rank_bidder"
+module-root = "src"

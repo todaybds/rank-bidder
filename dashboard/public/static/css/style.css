@@ -1,0 +1,21 @@
+/* Story 1.1 skeleton stylesheet. Story 4.2에서 메인뷰 5요소 스타일 추가. */
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #222;
+  background: #fafafa;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+  max-width: 1200px;
+  margin-inline: auto;
+}
+
+header h1 {
+  margin: 0 0 0.5rem 0;
+}
+
+.muted {
+  color: #888;
+}

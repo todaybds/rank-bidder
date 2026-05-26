@@ -1,0 +1,31 @@
+[project]
+name = "serp-measurer"
+version = "0.1.0"
+description = "Rank Bidder — SERP Measurer (AWS Lambda Seoul, FR-8, FR-10)"
+requires-python = ">=3.13"
+dependencies = [
+    "requests>=2.32,<3.0",
+    "beautifulsoup4>=4.12,<5.0",
+    "boto3>=1.35,<2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<9.0",
+]
+
+[tool.uv.sources]
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "measurer"
+module-root = "src"
+
+# Note: SAM build는 requirements.txt를 사용 (zip deployment).
+# 본 pyproject.toml은 dev/test 환경만을 위한 것.
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,37 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.sqlfluff_cache/
+*.egg-info/
+build/
+dist/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# SQLite (운영 데이터는 Oracle VM 안, 로컬 dev에서만 생김)
+*.db
+*.db-wal
+*.db-shm
+
+# AWS SAM
+.aws-sam/
+
+# Vercel
+.vercel/
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,20 @@
+[project]
+name = "rank-bidder"
+version = "0.1.0"
+description = "Naver SA 순위 타게팅 자동입찰 시스템 (Rank Bidder v1)"
+requires-python = ">=3.13"
+
+[tool.uv.workspace]
+members = ["decision-engine", "serp-measurer"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [".aws-sam", ".vercel"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
