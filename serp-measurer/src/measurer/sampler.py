@@ -83,12 +83,22 @@ def sample_keyword(term: str, samples_n: int) -> dict[str, Any]:
     modes = statistics.multimode(valid)
     chosen = modes[0] if len(modes) == 1 else statistics.median_low(valid)
 
+    # P2 (review 2026-05-27): chosen_rank 신뢰도 정보 동봉.
+    #   mode_count=1 → 명확한 최빈값 (높은 신뢰), >1 → 동점 / 분산
+    #   dispersion = max-min → 0이면 모든 샘플 일치, 큰 값이면 SERP 변동 큼
+    #   Story 1.8 입찰 결정에서 dispersion 큰 케이스는 HOLD 고려 가능.
+    unique_ranks = sorted(set(valid))
+    dispersion = max(valid) - min(valid)
     result["chosen_rank"] = chosen
+    result["mode_count"] = len(modes)
+    result["dispersion"] = dispersion
+    result["unique_count"] = len(unique_ranks)
     log.info(
         "sampler.chosen_rank",
         term=term,
         chosen_rank=chosen,
         valid_count=len(valid),
         modes=modes,
+        dispersion=dispersion,
     )
     return result

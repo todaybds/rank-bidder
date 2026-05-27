@@ -41,6 +41,9 @@ def verify_token(provided: str | None, expected: str) -> bool:
     Returns:
         True if 정확히 일치, 아니면 False.
     """
-    if provided is None or expected is None:
+    if provided is None or not provided:
+        return False
+    if expected is None or not expected:
+        # P0 (review 2026-05-27): expected가 빈 문자열이면 compare_digest 무력화.
         return False
     return hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))

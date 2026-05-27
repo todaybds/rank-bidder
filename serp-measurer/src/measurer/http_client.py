@@ -32,6 +32,8 @@ DEFAULT_HEADERS = {
 
 _SERP_BASE_URL = "https://m.search.naver.com/search.naver"
 _DEFAULT_TIMEOUT_S = 10.0
+#: P2 (review 2026-05-27) — SERP 응답 본문 최대 4MB. 통상 200-500KB.
+_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 #: module-level session — cold start 1회 초기화 후 warm invocation에서 reuse.
 _SESSION: requests.Session = requests.Session()
@@ -52,7 +54,8 @@ def fetch_serp_html(term: str, timeout: float = _DEFAULT_TIMEOUT_S) -> tuple[str
     """
     url = f"{_SERP_BASE_URL}?{urlencode({'query': term})}"
     try:
-        response = _SESSION.get(url, timeout=timeout)
+        # P2 (review 2026-05-27): stream=True + iter_content + size cap → 100MB OOM 차단.
+        response = _SESSION.get(url, timeout=timeout, stream=True)
     except requests.Timeout:
         log.warning("serp.fetch_timeout", term=term, timeout_s=timeout)
         return None, 0
@@ -63,8 +66,38 @@ def fetch_serp_html(term: str, timeout: float = _DEFAULT_TIMEOUT_S) -> tuple[str
         log.warning("serp.fetch_error", term=term, error=str(exc))
         return None, 0
 
-    if response.status_code != 200:
-        log.warning("serp.fetch_non_200", term=term, status=response.status_code)
-        return None, response.status_code
+    try:
+        if response.status_code != 200:
+            log.warning("serp.fetch_non_200", term=term, status=response.status_code)
+            return None, response.status_code
 
-    return response.text, 200
+        # P2: SERP HTML 응답 본문 사이즈 가드 (Naver mobile SERP는 통상 200-500KB).
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > _MAX_RESPONSE_BYTES:
+                    log.warning("serp.response_too_large", term=term, bytes_so_far=total)
+                    return None, response.status_code
+                chunks.append(chunk)
+        except requests.RequestException as exc:
+            log.warning("serp.body_read_error", term=term, error=str(exc))
+            return None, response.status_code
+
+        raw = b"".join(chunks)
+        # P1 (review 2026-05-27): UTF-8 명시 (chardet guess 의존 제거 — Naver mobile은 UTF-8).
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # 보조: cp949 fallback (Naver가 드물게 보내는 케이스 대응).
+            try:
+                text = raw.decode("cp949")
+            except UnicodeDecodeError:
+                log.warning("serp.decode_failed", term=term, bytes=total)
+                return None, response.status_code
+        return text, 200
+    finally:
+        response.close()

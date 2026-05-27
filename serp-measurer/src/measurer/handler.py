@@ -30,6 +30,9 @@ MAX_KEYWORDS_PER_CALL = 50
 SAMPLES_N_MIN = 3
 SAMPLES_N_MAX = 5
 SAMPLES_N_DEFAULT = 3
+#: P1 (review 2026-05-27) — raw body 사이즈 한도. JSON 50 KW × term 평균 30B = 1.5KB 이론치.
+#: 여유 있게 256KB로. Function URL 한도(6MB) 한참 아래에서 미리 자른다.
+MAX_BODY_BYTES = 256 * 1024
 
 _structlog_configured = False
 
@@ -118,13 +121,27 @@ def _validate_request(body: dict[str, Any]) -> tuple[list[dict[str, str]], int]:
     for idx, kw in enumerate(keywords):
         if not isinstance(kw, dict):
             raise ValueError(f"keywords[{idx}] must be object")
-        if not isinstance(kw.get("id"), str) or not kw["id"]:
+        # P3 (review 2026-05-27): str 타입 + strip 후 non-empty 필수 (공백만 거부).
+        raw_id = kw.get("id")
+        if not isinstance(raw_id, str) or not raw_id.strip():
             raise ValueError(f"keywords[{idx}].id must be non-empty string")
-        if not isinstance(kw.get("term"), str) or not kw["term"]:
+        raw_term = kw.get("term")
+        if not isinstance(raw_term, str) or not raw_term.strip():
             raise ValueError(f"keywords[{idx}].term must be non-empty string")
+        # 정규화된 값으로 덮어써서 downstream에서 일관 사용.
+        kw["id"] = raw_id.strip()
+        kw["term"] = raw_term.strip()
 
-    samples_n = body.get("samples_n", SAMPLES_N_DEFAULT)
-    if not isinstance(samples_n, int) or isinstance(samples_n, bool):
+    # D1 (review 2026-05-27): samples_n=3.0 같은 JSON 정수 표기 float 수용.
+    #   ``int(v) == v`` 통과 시 정수로 coerce, 외에는 거부. bool은 별도 거부.
+    raw_samples_n = body.get("samples_n", SAMPLES_N_DEFAULT)
+    if isinstance(raw_samples_n, bool):
+        raise ValueError("samples_n must be integer (got bool)")
+    if isinstance(raw_samples_n, int):
+        samples_n = raw_samples_n
+    elif isinstance(raw_samples_n, float) and raw_samples_n.is_integer():
+        samples_n = int(raw_samples_n)
+    else:
         raise ValueError("samples_n must be integer")
     if not (SAMPLES_N_MIN <= samples_n <= SAMPLES_N_MAX):
         raise ValueError(
@@ -155,20 +172,23 @@ def lambda_handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
     _configure_structlog_once()
     start = time.perf_counter()
 
-    # 1. body parse
-    try:
-        body = _parse_body(event)
-    except ValueError as exc:
-        log.warning("request.invalid_body", error=str(exc))
+    # P1 (review 2026-05-27): body 사이즈 가드를 가장 먼저. 인증 전 무거운 파싱 차단.
+    raw_body = event.get("body") or ""
+    if not isinstance(raw_body, str):
+        raw_body = str(raw_body)
+    if len(raw_body) > MAX_BODY_BYTES:
+        log.warning("request.body_too_large", size=len(raw_body))
         return _error_response(
-            400,
-            "INVALID_REQUEST_BODY",
-            f"Request body could not be parsed: {exc}",
-            "Send JSON object: {keywords:[{id,term},...], samples_n?:3-5}",
+            413,
+            "BODY_TOO_LARGE",
+            f"Request body exceeds {MAX_BODY_BYTES} bytes",
+            f"Send <= {MAX_BODY_BYTES // 1024} KB per call (max 50 keywords)",
         )
 
-    # 2. auth check
-    headers = event.get("headers") or {}
+    # P1 (review 2026-05-27): 1. auth check를 body JSON parse 앞으로 — pre-auth attack surface 차단.
+    headers = event.get("headers")
+    if not isinstance(headers, dict):
+        headers = {}
     provided = get_header(headers, "X-Auth-Token")
     try:
         expected = get_auth_token()
@@ -187,6 +207,18 @@ def lambda_handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
             "INVALID_AUTH_TOKEN",
             "X-Auth-Token header missing or invalid",
             "Set X-Auth-Token to the value stored in SSM /rank-bidder/lambda/auth-token",
+        )
+
+    # 2. body parse (인증 통과 후)
+    try:
+        body = _parse_body(event)
+    except ValueError as exc:
+        log.warning("request.invalid_body", error=str(exc))
+        return _error_response(
+            400,
+            "INVALID_REQUEST_BODY",
+            f"Request body could not be parsed: {exc}",
+            "Send JSON object: {keywords:[{id,term},...], samples_n?:3-5}",
         )
 
     # 3. validate

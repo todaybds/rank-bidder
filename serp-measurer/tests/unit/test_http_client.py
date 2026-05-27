@@ -14,9 +14,16 @@ from measurer import http_client
 
 
 def _make_response(status_code: int, text: str = "") -> MagicMock:
+    """P2 review (2026-05-27): http_client는 stream=True + iter_content + utf-8 decode 사용.
+
+    Mock은 iter_content가 UTF-8 인코딩된 단일 chunk를 yield하도록.
+    """
     resp = MagicMock(spec=requests.Response)
     resp.status_code = status_code
-    resp.text = text
+    resp.text = text  # 호환용 (호출 안 됨)
+    encoded = text.encode("utf-8") if text else b""
+    resp.iter_content = MagicMock(return_value=iter([encoded] if encoded else []))
+    resp.close = MagicMock()
     return resp
 
 

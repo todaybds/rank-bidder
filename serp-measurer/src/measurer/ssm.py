@@ -38,5 +38,12 @@ def get_auth_token() -> str:
 
     client = boto3.client("ssm")
     response = client.get_parameter(Name=parameter_name, WithDecryption=True)
-    _cached_token = response["Parameter"]["Value"]
+    value = response["Parameter"]["Value"]
+    if not value:
+        # P0 (review 2026-05-27): 빈 SecureString = auth 우회 위험.
+        # hmac.compare_digest(b"", b"") → True 라서 빈 X-Auth-Token 헤더도 통과해 버린다.
+        raise RuntimeError(
+            f"SSM parameter {parameter_name!r} value is empty — refuse to cache empty token"
+        )
+    _cached_token = value
     return _cached_token
