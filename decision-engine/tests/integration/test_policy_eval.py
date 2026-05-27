@@ -4,7 +4,7 @@ cap_streak_started_at D17 reset.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rank_bidder.db.connection import get_connection, write_transaction

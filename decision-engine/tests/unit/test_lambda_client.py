@@ -54,9 +54,8 @@ def test_missing_results_key_raises() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"oops": []})
 
-    with _mock_client(handler) as c:
-        with pytest.raises(LambdaClientError, match="missing 'results'"):
-            measure_keywords([{"id": "k", "term": "t"}], client=c)
+    with _mock_client(handler) as c, pytest.raises(LambdaClientError, match="missing 'results'"):
+        measure_keywords([{"id": "k", "term": "t"}], client=c)
 
 
 def test_http_error_raises() -> None:
