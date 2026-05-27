@@ -18,3 +18,22 @@ Raw SQL 순번 마이그레이션 (Architecture D2, NFR-8 — Alembic 거부, OR
 
 `db/migrate.py` (Story 1.2)가 `schema_migrations` 테이블 보고 미적용 마이그레이션을 순서대로 적용.
 SQLite WAL + `synchronous=FULL` 모드에서 idempotent.
+
+### CLI
+
+```bash
+# RANKBIDDER_DB_PATH가 설정된 환경에서:
+uv run --package decision-engine python -m rank_bidder.db.migrate current
+uv run --package decision-engine python -m rank_bidder.db.migrate up
+```
+
+### FastAPI lifespan
+
+`decision-engine/src/rank_bidder/main.py`의 `lifespan`이 startup 시 자동으로 `migrate.up()` 호출.
+production deploy 절차는 systemd `ExecStartPre=`로 명시 실행 권장 (이중 안전망).
+
+### 규칙
+
+- 파일명: `<NNNN>_<snake_name>.sql` — `NNNN`은 1부터 빈틈 없이 증가.
+- PRAGMA는 절대 마이그레이션 파일에 넣지 말 것 — `db/connection.py`가 단일 source.
+- 한 번 적용된 마이그레이션은 절대 수정 금지 (idempotent + history 보존). 변경은 새 번호로 추가.
