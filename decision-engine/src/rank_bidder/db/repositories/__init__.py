@@ -11,6 +11,7 @@ from rank_bidder.db.repositories import (
     keywords,
     measurements,
     notifications,
+    policies,
     sites,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "keywords",
     "measurements",
     "notifications",
+    "policies",
     "sites",
 ]

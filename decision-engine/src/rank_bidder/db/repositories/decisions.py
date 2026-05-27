@@ -15,9 +15,9 @@ def insert(conn: sqlite3.Connection, payload: DecisionCreate) -> Decision:
         INSERT INTO {TABLE} (
             keyword_id, cycle_id, decided_at, decision,
             old_bid, new_bid, rank_observed, reason,
-            api_response_status, api_error
+            api_response_status, api_error, bid_cap
         )
-        VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             payload.keyword_id,
@@ -29,6 +29,7 @@ def insert(conn: sqlite3.Connection, payload: DecisionCreate) -> Decision:
             payload.reason,
             payload.api_response_status,
             payload.api_error,
+            payload.bid_cap,
         ),
     )
     return _require(conn, cursor.lastrowid)

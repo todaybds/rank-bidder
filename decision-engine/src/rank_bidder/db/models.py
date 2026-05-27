@@ -257,6 +257,8 @@ class DecisionCreate(BaseModel):
     reason: str | None = None
     api_response_status: int | None = None
     api_error: str | None = None
+    # Story 3.1 D17: 결정 시점 effective bid_cap. None 허용 — pre-3.1 row backward compat.
+    bid_cap: int | None = Field(default=None, ge=100, le=100000)
 
     @field_validator("decision")
     @classmethod
@@ -276,5 +278,60 @@ class Decision(DecisionCreate):
         return _to_utc_datetime(v)
 
     @field_serializer("decided_at")
+    def _serialize_dt(self, v: datetime) -> str:
+        return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+# ---------------------------------------------------------------------------
+# Policy — Multi-time policy row (Story 3.1, FR-7)
+# ---------------------------------------------------------------------------
+
+_POLICY_SCOPE_TYPES = {"site", "keyword"}
+MINUTES_PER_WEEK = 7 * 24 * 60  # 10080
+
+
+class PolicyBase(BaseModel):
+    model_config = _BASE_CONFIG
+
+    scope_type: str
+    scope_id: str = Field(min_length=1, max_length=64)
+    start_minute_of_week: int = Field(ge=0, le=MINUTES_PER_WEEK - 1)
+    duration_minutes: int = Field(ge=1, le=MINUTES_PER_WEEK)
+    target_rank: int = Field(ge=1, le=10)
+    bid_cap: int = Field(ge=100, le=100000)
+
+    @field_validator("scope_type")
+    @classmethod
+    def _validate_scope_type(cls, v: str) -> str:
+        if v not in _POLICY_SCOPE_TYPES:
+            raise ValueError(f"scope_type must be in {sorted(_POLICY_SCOPE_TYPES)}, got {v!r}")
+        return v
+
+
+class PolicyCreate(PolicyBase):
+    """신규 정책 insert payload — id는 AUTOINCREMENT."""
+
+
+class PolicyUpdate(BaseModel):
+    model_config = _BASE_CONFIG
+
+    start_minute_of_week: int | None = Field(default=None, ge=0, le=MINUTES_PER_WEEK - 1)
+    duration_minutes: int | None = Field(default=None, ge=1, le=MINUTES_PER_WEEK)
+    target_rank: int | None = Field(default=None, ge=1, le=10)
+    bid_cap: int | None = Field(default=None, ge=100, le=100000)
+
+
+class Policy(PolicyBase):
+    id: int
+    version: int = Field(ge=0)
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_dt(cls, v: Any) -> datetime:
+        return _to_utc_datetime(v)
+
+    @field_serializer("created_at", "updated_at")
     def _serialize_dt(self, v: datetime) -> str:
         return v.astimezone(UTC).isoformat().replace("+00:00", "Z")

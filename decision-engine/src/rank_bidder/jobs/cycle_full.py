@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import structlog
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
@@ -35,6 +37,7 @@ from rank_bidder.db.repositories import (
 )
 from rank_bidder.engine import bid_decision, new_cycle_id, recovery, state_machine
 from rank_bidder.engine.exceptions import FinalGuardFailedError
+from rank_bidder.engine.policy_eval import effective_settings
 from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
 from rank_bidder.naver_sa.bid import put_bid as sa_put_bid
 from rank_bidder.naver_sa.exceptions import NaverKeywordDeleted, NaverSAError
@@ -151,12 +154,19 @@ def _process_keyword(
             ),
         )
 
+    # Story 3.1 — multi-time policy: KW → site → keyword default fallback.
+    # D17 transition: 정책 전환으로 bid_cap이 바뀌면 decisions.bid_cap이 바뀜 → 다음
+    # 사이클부터 cap streak 자동 break = Cap 도달 타이머 reset.
+    now = datetime.now(UTC)
+    with get_connection() as conn:
+        eff = effective_settings(conn, kw, now)
+
     # decide → DECIDED 전이 + decisions row insert
     outcome = bid_decision.decide(
         current_rank=chosen_rank if isinstance(chosen_rank, int) else None,
-        target_rank=kw.target_rank,
+        target_rank=eff.target_rank,
         current_bid=current_bid,
-        bid_cap=kw.bid_cap,
+        bid_cap=eff.bid_cap,
     )
     with write_transaction() as conn:
         state_machine.transition(conn, cycle_id, kw.id, "DECIDED")
@@ -170,6 +180,7 @@ def _process_keyword(
                 new_bid=outcome.new_bid,
                 rank_observed=chosen_rank if isinstance(chosen_rank, int) else None,
                 reason=outcome.reason,
+                bid_cap=eff.bid_cap,
             ),
         )
 
