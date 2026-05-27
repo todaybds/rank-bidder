@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 from rank_bidder.naver_sa.dry_run_client import (
-    get_current_bid,
     get_keyword,
     get_keyword_with_bad_timestamp,
     put_bid,
