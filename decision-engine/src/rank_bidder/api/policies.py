@@ -67,14 +67,20 @@ def _verify_scope_exists(conn, scope_type: str, scope_id: str) -> None:
         if sites_repo.get(conn, scope_id) is None:
             raise HTTPException(
                 status_code=404,
-                detail={"error": {"code": "SCOPE_NOT_FOUND", "scope_type": "site", "scope_id": scope_id}},
+                detail={
+                    "error": {"code": "SCOPE_NOT_FOUND", "scope_type": "site", "scope_id": scope_id}
+                },
             )
     else:
         if keywords_repo.get(conn, scope_id) is None:
             raise HTTPException(
                 status_code=404,
                 detail={
-                    "error": {"code": "SCOPE_NOT_FOUND", "scope_type": "keyword", "scope_id": scope_id}
+                    "error": {
+                        "code": "SCOPE_NOT_FOUND",
+                        "scope_type": "keyword",
+                        "scope_id": scope_id,
+                    }
                 },
             )
 

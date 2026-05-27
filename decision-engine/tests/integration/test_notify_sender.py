@@ -114,9 +114,7 @@ def test_dry_run_marks_sent_at(temp_db: Path, dry_run_env: None) -> None:
     assert got.suppressed_until is not None
 
 
-def test_send_calls_smtp_when_configured(
-    temp_db: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_send_calls_smtp_when_configured(temp_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SMTP env 설정 시 send 호출됨 (mock 으로 확인)."""
     monkeypatch.setenv("NOTIFY_SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("NOTIFY_SMTP_PORT", "587")
@@ -137,9 +135,7 @@ def test_send_calls_smtp_when_configured(
     assert mock_send.call_count == 1
 
 
-def test_failed_send_does_not_mark_sent(
-    temp_db: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_failed_send_does_not_mark_sent(temp_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SMTP 실패 시 sent_at 안 박힘 → 다음 분 재시도 가능."""
     monkeypatch.setenv("NOTIFY_SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("NOTIFY_TO", "alert@example.com")

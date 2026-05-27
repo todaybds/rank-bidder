@@ -80,9 +80,7 @@ def update(
         if existing is None:
             raise VersionConflictError(TABLE, str(policy_id), expected_version, None)
         if existing.version != expected_version:
-            raise VersionConflictError(
-                TABLE, str(policy_id), expected_version, existing.version
-            )
+            raise VersionConflictError(TABLE, str(policy_id), expected_version, existing.version)
         return existing
 
     update_with_version(

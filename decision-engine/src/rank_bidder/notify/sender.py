@@ -88,8 +88,7 @@ def run_once(now: datetime | None = None, *, dry_run: bool | None = None) -> dic
         new_suppressed_until = _sqlite_dt(now + timedelta(hours=_suppression_for(n.event_type)))
         with write_transaction() as conn:
             conn.execute(
-                f"UPDATE {notifications.TABLE} "
-                f"SET sent_at = ?, suppressed_until = ? WHERE id = ?",
+                f"UPDATE {notifications.TABLE} SET sent_at = ?, suppressed_until = ? WHERE id = ?",
                 (now_sqlite, new_suppressed_until, n.id),
             )
         if effective_dry:

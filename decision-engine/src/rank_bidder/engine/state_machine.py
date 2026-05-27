@@ -57,30 +57,47 @@ def _ensure_valid(from_state: str, to_state: str, cycle_id: str, keyword_id: str
 def _final_guard(conn: sqlite3.Connection, cycle_id: str, keyword_id: str) -> None:
     """I6: PUT_SENT 직전 site.enabled AND keyword.enabled 재확인.
 
-    실패 시:
-    1. cycle_entries.upsert(state=FAILED) 자동 (호출자가 reason은 decisions 테이블에 별도 기록)
-    2. FinalGuardFailedError raise — 호출자가 잡아서 D15 cycle 진행 종료
+    실패 시 ``FinalGuardFailedError`` raise. **FAILED 상태 upsert는 호출자 책임**
+    (2026-05-27 code-review CRITICAL C1 fix: 같은 transaction에서 upsert 후 raise하면
+    write_transaction의 rollback이 FAILED 박제를 휘발시킴. 호출자가 except 절에서
+    ``cycle_entries.upsert(state="FAILED")``를 새 write_transaction으로 박제해야 한다).
+
+    Raises 직전 구조화 log 발생 (CRITICAL C2: observability gap fix).
     """
     kw = keywords.get(conn, keyword_id)
     if kw is None:
-        cycle_entries.upsert(
-            conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=keyword_id, state="FAILED")
+        log.warning(
+            "state_machine.final_guard_failed",
+            cycle_id=cycle_id,
+            keyword_id=keyword_id,
+            reason="KEYWORD_DELETED",
         )
         raise FinalGuardFailedError(cycle_id, keyword_id, reason="KEYWORD_DELETED")
     if not kw.enabled:
-        cycle_entries.upsert(
-            conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=keyword_id, state="FAILED")
+        log.warning(
+            "state_machine.final_guard_failed",
+            cycle_id=cycle_id,
+            keyword_id=keyword_id,
+            reason="DISABLED_DURING_CYCLE",
+            entity="keyword",
         )
         raise FinalGuardFailedError(cycle_id, keyword_id, reason="DISABLED_DURING_CYCLE")
     site = sites.get(conn, kw.site_id)
     if site is None:
-        cycle_entries.upsert(
-            conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=keyword_id, state="FAILED")
+        log.warning(
+            "state_machine.final_guard_failed",
+            cycle_id=cycle_id,
+            keyword_id=keyword_id,
+            reason="SITE_DELETED",
         )
         raise FinalGuardFailedError(cycle_id, keyword_id, reason="SITE_DELETED")
     if not site.enabled:
-        cycle_entries.upsert(
-            conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=keyword_id, state="FAILED")
+        log.warning(
+            "state_machine.final_guard_failed",
+            cycle_id=cycle_id,
+            keyword_id=keyword_id,
+            reason="DISABLED_DURING_CYCLE",
+            entity="site",
         )
         raise FinalGuardFailedError(cycle_id, keyword_id, reason="DISABLED_DURING_CYCLE")
 

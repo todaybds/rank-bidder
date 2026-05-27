@@ -213,12 +213,19 @@ def _process_keyword(
         summary["committed"] += 1
         return
 
-    # I6 final guard 포함 PUT_SENT 전이
+    # I6 final guard 포함 PUT_SENT 전이.
+    # 2026-05-27 code-review CRITICAL C1 fix: FinalGuardFailedError가 raise되면
+    # write_transaction이 rollback → FAILED 박제가 휘발. 별도 새 transaction에서
+    # FAILED upsert 발생해야 spec AC2 "state=FAILED 박제" 충족.
     try:
         with write_transaction() as conn:
             state_machine.transition(conn, cycle_id, kw.id, "PUT_SENT")
     except FinalGuardFailedError as exc:
         log.warning("cycle_full.final_guard", keyword_id=kw.id, reason=exc.reason)
+        with write_transaction() as conn:
+            cycle_entries.upsert(
+                conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=kw.id, state="FAILED")
+            )
         summary["skipped"] += 1
         return
 

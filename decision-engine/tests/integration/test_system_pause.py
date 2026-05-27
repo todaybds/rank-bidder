@@ -128,7 +128,9 @@ def test_cycle_full_does_put_when_not_paused(temp_db: Path) -> None:
             "rank_bidder.jobs.cycle_full.measure_keywords",
             return_value=fake_results,
         ),
-        patch("rank_bidder.jobs.cycle_full.sa_put_bid", new=MagicMock(return_value=None)) as mock_put,
+        patch(
+            "rank_bidder.jobs.cycle_full.sa_put_bid", new=MagicMock(return_value=None)
+        ) as mock_put,
     ):
         cycle_full.run_cycle(samples_n=3)
 

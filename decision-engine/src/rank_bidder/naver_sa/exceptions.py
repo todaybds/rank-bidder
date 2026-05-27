@@ -3,9 +3,10 @@
 호출자가 분기해서 처리:
 - ``NaverInvalidRequest`` (400) — 입력 잘못, 재시도 의미 없음
 - ``NaverKeywordDeleted`` (404) — Naver 관리자에서 KW 삭제됨, cycle_entries → NAVER_DELETED
+- ``NaverAuthError`` (403 non-timestamp) — 키 해지/IP 차단/권한 등, 운영자 즉시 개입 필요
 - ``NaverSANtpDrift`` (403 invalid-timestamp 재동기화 후 재발) — 시계 문제, 운영자 알림
 - ``NaverSAUnavailable`` (429/5xx tenacity 재시도 후 실패) — 일시 장애, 다음 사이클로 미룸
-- ``NaverSAError`` — 베이스, 위 4개의 super
+- ``NaverSAError`` — 베이스, 위 5개의 super
 """
 
 from __future__ import annotations
@@ -28,6 +29,10 @@ class NaverInvalidRequest(NaverSAError):
 
 class NaverKeywordDeleted(NaverSAError):
     """HTTP 404 — KW가 Naver 관리자에서 삭제됨. D15 (n) NAVER_DELETED 전이."""
+
+
+class NaverAuthError(NaverSAError):
+    """HTTP 403 (non-timestamp) — 키 해지·IP 차단·권한 변경 등. NTP path와 구별. 운영자 개입."""
 
 
 class NaverSANtpDrift(NaverSAError):

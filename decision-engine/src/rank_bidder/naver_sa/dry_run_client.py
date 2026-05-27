@@ -15,13 +15,17 @@ import httpx
 
 from rank_bidder.naver_sa.auth import build_headers
 
-warnings.warn(
+_DEPRECATION_MSG = (
     "rank_bidder.naver_sa.dry_run_client is DEPRECATED (Story 1.5). "
     "Use rank_bidder.naver_sa.bid / rank_bidder.naver_sa.estimate. "
-    "This module will be removed in Story 1.6.",
-    DeprecationWarning,
-    stacklevel=2,
+    "This module will be removed in Story 1.6."
 )
+
+
+def _warn_deprecated() -> None:
+    """P14: import-time warn 대신 per-call warn — `python -W error::DeprecationWarning`
+    환경/conftest 공유 import에서 무관 모듈을 폭파시키지 않도록."""
+    warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=3)
 
 
 def get_keyword(
@@ -39,6 +43,7 @@ def get_keyword(
     Returns:
         ``(status_code, response_body_or_None, latency_ms)``. 4xx/5xx도 raise 안 함 — 측정용.
     """
+    _warn_deprecated()
     uri = f"/ncc/keywords/{keyword_id}"
     headers = build_headers(
         "GET",
@@ -85,6 +90,7 @@ def put_bid(
     Returns:
         ``(status_code, response_body_or_None, latency_ms)``. 4xx/5xx도 raise 안 함 — 측정용.
     """
+    _warn_deprecated()
     uri = f"/ncc/keywords/{keyword_id}"
     headers = build_headers(
         "PUT",
@@ -132,6 +138,7 @@ def restore_use_group_bid(
     Story 1.3 측정 후 ``put_bid`` 가 자동 useGroupBidAmt=False 로 전환시킨 KW를
     원래 그룹입찰 사용 상태로 복원. 측정 종료 후 try/finally 안에서 호출.
     """
+    _warn_deprecated()
     uri = f"/ncc/keywords/{keyword_id}"
     headers = build_headers(
         "PUT",
@@ -172,6 +179,7 @@ def get_keyword_with_bad_timestamp(
 
     NTP guard 검증용 spike — Story 1.5의 ``ntp_guard`` 가 사전 차단할 시나리오 확인.
     """
+    _warn_deprecated()
     drift_ms = str(int(time.time() * 1000) + drift_seconds * 1000)
     return get_keyword(
         keyword_id,
@@ -196,6 +204,7 @@ def get_current_bid(
     Raises:
         RuntimeError: GET 응답이 200이 아니거나 body에 bidAmt가 없을 때.
     """
+    _warn_deprecated()
     status, body, _ = get_keyword(
         keyword_id,
         api_key=api_key,

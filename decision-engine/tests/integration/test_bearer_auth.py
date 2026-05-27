@@ -82,9 +82,7 @@ def test_200_valid_bearer_passes_through(temp_db: Path, authed_env: str) -> None
     assert resp.status_code != 401
 
 
-def test_empty_token_env_treated_as_bypass(
-    temp_db: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_empty_token_env_treated_as_bypass(temp_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """env 가 빈 문자열이면 bypass — config typo 안전망."""
     monkeypatch.setenv(ENV_VAR, "")
     client = TestClient(app)

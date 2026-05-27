@@ -160,9 +160,7 @@ def test_delete_with_correct_version(temp_db: Path) -> None:
     )
     assert resp.status_code == 200
     # 다시 list 시 미존재
-    after = client.get(
-        "/api/v1/policies", params={"scope_type": "site", "scope_id": "s1"}
-    ).json()
+    after = client.get("/api/v1/policies", params={"scope_type": "site", "scope_id": "s1"}).json()
     assert after["count"] == 0
 
 
@@ -196,9 +194,7 @@ def test_delete_404_when_not_exists(temp_db: Path) -> None:
 
 def test_invalid_scope_type_422(temp_db: Path) -> None:
     client = TestClient(app)
-    resp = client.get(
-        "/api/v1/policies", params={"scope_type": "BOGUS", "scope_id": "s1"}
-    )
+    resp = client.get("/api/v1/policies", params={"scope_type": "BOGUS", "scope_id": "s1"})
     assert resp.status_code == 422
 
 
@@ -237,12 +233,8 @@ def test_list_filters_by_scope(temp_db: Path) -> None:
                 "bid_cap": 1000,
             },
         )
-    s1 = client.get(
-        "/api/v1/policies", params={"scope_type": "site", "scope_id": "s1"}
-    ).json()
-    s2 = client.get(
-        "/api/v1/policies", params={"scope_type": "site", "scope_id": "s2"}
-    ).json()
+    s1 = client.get("/api/v1/policies", params={"scope_type": "site", "scope_id": "s1"}).json()
+    s2 = client.get("/api/v1/policies", params={"scope_type": "site", "scope_id": "s2"}).json()
     assert s1["count"] == 1
     assert s2["count"] == 1
     assert s1["items"][0]["scope_id"] == "s1"

@@ -8,6 +8,7 @@ from rank_bidder.naver_sa.auth import build_headers, make_signature, now_timesta
 from rank_bidder.naver_sa.bid import put_bid
 from rank_bidder.naver_sa.estimate import average_position_bid
 from rank_bidder.naver_sa.exceptions import (
+    NaverAuthError,
     NaverInvalidRequest,
     NaverKeywordDeleted,
     NaverSAError,
@@ -21,6 +22,7 @@ __all__ = [
     "make_signature",
     "now_timestamp_ms",
     "put_bid",
+    "NaverAuthError",
     "NaverInvalidRequest",
     "NaverKeywordDeleted",
     "NaverSAError",

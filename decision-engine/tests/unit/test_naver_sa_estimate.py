@@ -46,12 +46,33 @@ def test_estimate_alternate_wrapper_key() -> None:
         assert average_position_bid(KW_ID, 1, client=c) == 9999
 
 
-def test_estimate_empty_returns_zero() -> None:
+def test_estimate_empty_returns_none() -> None:
+    """D3 (2026-05-27 review): empty/unparsable shape → None (sentinel = parse-failure).
+
+    0 KRW는 Naver의 valid 응답값 → 0과 구별돼야 함.
+    """
+
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"estimate": []})
 
     with _client(httpx.MockTransport(handler)) as c:
-        assert average_position_bid(KW_ID, 5, client=c) == 0
+        assert average_position_bid(KW_ID, 5, client=c) is None
+
+
+def test_estimate_zero_bid_preserved() -> None:
+    """0 KRW는 valid — falsy `or` coalesce 제거 (P11)로 0이 그대로 반환돼야 함."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"estimate": [{"position": 1, "bid": 0}]})
+
+    with _client(httpx.MockTransport(handler)) as c:
+        assert average_position_bid(KW_ID, 1, client=c) == 0
+
+
+def test_estimate_target_rank_bool_rejected() -> None:
+    """P13: target_rank=True (== 1) 통과 silently 차단."""
+    with pytest.raises(ValueError, match=r"must be a builtin int"):
+        average_position_bid(KW_ID, True)  # type: ignore[arg-type]
 
 
 def test_estimate_target_rank_below_1_raises() -> None:

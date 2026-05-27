@@ -5,13 +5,13 @@ httpx.MockTransport로 Naver SA 응답 시뮬레이션. 실제 API 호출 없음
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 
 import httpx
 import pytest
 from rank_bidder.naver_sa.bid import put_bid
 from rank_bidder.naver_sa.exceptions import (
+    NaverAuthError,
     NaverInvalidRequest,
     NaverKeywordDeleted,
     NaverSANtpDrift,
@@ -66,8 +66,26 @@ def test_put_bid_above_max_raises() -> None:
 
 
 def test_put_bid_empty_kw_raises() -> None:
-    with pytest.raises(ValueError, match=r"non-empty"):
+    with pytest.raises(ValueError, match=r"keyword_id must match"):
         put_bid("", 500, adgroup_id=AG_ID)
+
+
+def test_put_bid_keyword_id_with_whitespace_rejected() -> None:
+    """P26: leading/trailing whitespace → HMAC vs URL 불일치 위험 차단."""
+    with pytest.raises(ValueError, match=r"keyword_id must match"):
+        put_bid("nkw-test-123\n", 500, adgroup_id=AG_ID)
+
+
+def test_put_bid_bool_amt_rejected() -> None:
+    """P12: True == 1 통과 silently 차단."""
+    with pytest.raises(ValueError, match=r"must be a builtin int"):
+        put_bid(KW_ID, True, adgroup_id=AG_ID)  # type: ignore[arg-type]
+
+
+def test_put_bid_float_amt_rejected() -> None:
+    """P12: 100.7 silent truncation 차단."""
+    with pytest.raises(ValueError, match=r"must be a builtin int"):
+        put_bid(KW_ID, 100.7, adgroup_id=AG_ID)  # type: ignore[arg-type]
 
 
 def test_put_bid_400_raises_invalid_request() -> None:
@@ -139,6 +157,16 @@ def test_put_bid_403_resync_then_persists_raises_ntp_drift(monkeypatch: pytest.M
         put_bid(KW_ID, 500, adgroup_id=AG_ID, client=c)
 
 
+def test_put_bid_403_non_timestamp_raises_auth_error() -> None:
+    """P9: 키 해지/IP 차단 등 non-timestamp 403은 NTP path 진입 안 함 → NaverAuthError 즉시."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"code": 1001, "title": "Permission denied"})
+
+    with _client(httpx.MockTransport(handler)) as c, pytest.raises(NaverAuthError):
+        put_bid(KW_ID, 500, adgroup_id=AG_ID, client=c)
+
+
 def test_put_bid_403_resync_then_success_on_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rank_bidder.naver_sa.client.resync_ntp", lambda: True)
     seq = iter(
@@ -156,13 +184,20 @@ def test_put_bid_403_resync_then_success_on_retry(monkeypatch: pytest.MonkeyPatc
     assert result["bidAmt"] == 500
 
 
-def test_put_bid_missing_env_raises_runtime() -> None:
-    # 자격증명 env 제거 → _load_credentials raise (client 주입 안 했을 때만 트리거)
+def test_put_bid_missing_env_raises_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P19: env state leak 차단 — monkeypatch.delenv로 자동 restore."""
     for k in (
         "RANKBIDDER_NAVER_SA_API_KEY",
         "RANKBIDDER_NAVER_SA_SECRET_KEY",
         "RANKBIDDER_NAVER_SA_CUSTOMER_ID",
     ):
-        os.environ.pop(k, None)
+        monkeypatch.delenv(k, raising=False)
+    with pytest.raises(RuntimeError, match=r"credentials missing"):
+        put_bid(KW_ID, 500, adgroup_id=AG_ID)
+
+
+def test_put_bid_whitespace_env_raises_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P22: 공백만 자격증명 → strip 후 empty 검출."""
+    monkeypatch.setenv("RANKBIDDER_NAVER_SA_API_KEY", "  ")
     with pytest.raises(RuntimeError, match=r"credentials missing"):
         put_bid(KW_ID, 500, adgroup_id=AG_ID)

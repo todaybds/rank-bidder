@@ -30,7 +30,9 @@ def _backdate_decision(conn, decision_id: int, decided_at: datetime) -> None:
     )
 
 
-def _seed_site_with_kws(conn, site_id: str = "s1", kw_ids: tuple[str, ...] = ("kw1", "kw2")) -> None:
+def _seed_site_with_kws(
+    conn, site_id: str = "s1", kw_ids: tuple[str, ...] = ("kw1", "kw2")
+) -> None:
     sites.create(conn, SiteCreate(id=site_id, name="Site"))
     for kid in kw_ids:
         keywords.create(
@@ -257,16 +259,12 @@ def test_find_active_suppression_matches_scope_key(temp_db: Path) -> None:
     with get_connection() as conn:
         # s1 매치
         assert (
-            notifications.find_active_suppression(
-                conn, RACE_EVENT, "s1", "2026-05-27 12:00:00"
-            )
+            notifications.find_active_suppression(conn, RACE_EVENT, "s1", "2026-05-27 12:00:00")
             is not None
         )
         # 다른 사이트 미매치
         assert (
-            notifications.find_active_suppression(
-                conn, RACE_EVENT, "s9", "2026-05-27 12:00:00"
-            )
+            notifications.find_active_suppression(conn, RACE_EVENT, "s9", "2026-05-27 12:00:00")
             is None
         )
 
@@ -282,8 +280,6 @@ def test_find_active_suppression_ignores_expired(temp_db: Path) -> None:
         )
     with get_connection() as conn:
         assert (
-            notifications.find_active_suppression(
-                conn, RACE_EVENT, "s1", "2026-05-27 12:00:00"
-            )
+            notifications.find_active_suppression(conn, RACE_EVENT, "s1", "2026-05-27 12:00:00")
             is None
         )

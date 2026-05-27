@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 from rank_bidder.db.connection import get_connection, write_transaction
-from rank_bidder.db.models import KeywordCreate, KeywordUpdate, SiteCreate, SiteUpdate
+from rank_bidder.db.models import (
+    CycleEntryCreate,
+    KeywordCreate,
+    KeywordUpdate,
+    SiteCreate,
+    SiteUpdate,
+)
 from rank_bidder.db.repositories import cycle_entries, keywords, sites
 from rank_bidder.engine import state_machine
 from rank_bidder.engine.exceptions import (
@@ -89,7 +95,9 @@ def test_failed_is_terminal(seeded: str) -> None:
 
 
 def test_i6_final_guard_blocks_disabled_keyword(seeded: str) -> None:
-    """I6: PUT_SENT 진입 직전 keyword.enabled=False → 거절 + state=FAILED."""
+    """I6: PUT_SENT 진입 직전 keyword.enabled=False → 거절. **FAILED upsert는 호출자 책임**
+    (2026-05-27 code-review CRITICAL C1: 같은 write_transaction에서 upsert 후 raise는 rollback됨).
+    """
     with write_transaction() as conn:
         state_machine.transition(conn, CYCLE_ID, seeded, "PLANNED")
         state_machine.transition(conn, CYCLE_ID, seeded, "MEASURED")
@@ -98,13 +106,39 @@ def test_i6_final_guard_blocks_disabled_keyword(seeded: str) -> None:
         kw = keywords.get(conn, seeded)
         assert kw is not None
         keywords.update(conn, seeded, KeywordUpdate(enabled=False), expected_version=kw.version)
-        with pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"):
-            state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
+
+    # 별도 transaction에서 PUT_SENT 시도 → final guard raise
+    with pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"), write_transaction() as conn:
+        state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
+
+    # caller 책임: FAILED upsert를 새 transaction에서 박제 (cycle_full.py 패턴)
+    with write_transaction() as conn:
+        cycle_entries.upsert(
+            conn, CycleEntryCreate(cycle_id=CYCLE_ID, keyword_id=seeded, state="FAILED")
+        )
     assert _state() == "FAILED"
 
 
+def test_i6_final_guard_no_upsert_on_rollback(seeded: str) -> None:
+    """CRITICAL C1 regression: caller가 FAILED upsert 안 하면 state는 DECIDED 그대로 — final
+    guard가 더 이상 silent FAILED upsert 안 한다는 contract 박제."""
+    with write_transaction() as conn:
+        state_machine.transition(conn, CYCLE_ID, seeded, "PLANNED")
+        state_machine.transition(conn, CYCLE_ID, seeded, "MEASURED")
+        state_machine.transition(conn, CYCLE_ID, seeded, "DECIDED")
+        kw = keywords.get(conn, seeded)
+        assert kw is not None
+        keywords.update(conn, seeded, KeywordUpdate(enabled=False), expected_version=kw.version)
+
+    with pytest.raises(FinalGuardFailedError), write_transaction() as conn:
+        state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
+
+    # caller가 FAILED upsert를 안 했으니 state는 마지막 성공 state(DECIDED) 그대로
+    assert _state() == "DECIDED"
+
+
 def test_i6_final_guard_blocks_disabled_site(seeded: str) -> None:
-    """I6: site.enabled=False → 거절 + state=FAILED."""
+    """I6: site.enabled=False → 거절. FAILED upsert는 호출자 책임."""
     with write_transaction() as conn:
         state_machine.transition(conn, CYCLE_ID, seeded, "PLANNED")
         state_machine.transition(conn, CYCLE_ID, seeded, "MEASURED")
@@ -112,8 +146,14 @@ def test_i6_final_guard_blocks_disabled_site(seeded: str) -> None:
         s = sites.get(conn, SITE_ID)
         assert s is not None
         sites.update(conn, SITE_ID, SiteUpdate(enabled=False), expected_version=s.version)
-        with pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"):
-            state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
+
+    with pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"), write_transaction() as conn:
+        state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
+
+    with write_transaction() as conn:
+        cycle_entries.upsert(
+            conn, CycleEntryCreate(cycle_id=CYCLE_ID, keyword_id=seeded, state="FAILED")
+        )
     assert _state() == "FAILED"
 
 
