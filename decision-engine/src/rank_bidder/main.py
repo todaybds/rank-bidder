@@ -67,9 +67,13 @@ from rank_bidder.api.keywords import router as keywords_router  # noqa: E402
 # Story 2.3 — site toggle router
 from rank_bidder.api.sites import router as sites_router  # noqa: E402
 
+# Story 3.3 — policies CRUD router
+from rank_bidder.api.policies import router as policies_router  # noqa: E402
+
 app.include_router(imports_router)
 app.include_router(keywords_router)
 app.include_router(sites_router)
+app.include_router(policies_router)
 
 
 @app.get("/health")

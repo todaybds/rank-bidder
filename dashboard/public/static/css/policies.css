@@ -1,0 +1,89 @@
+/* Story 3.3 — 멀티타임 정책 편집 UI. */
+
+section {
+  margin: 2rem 0;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+section h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+  color: #444;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  font-variant-numeric: tabular-nums;
+}
+
+th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.actions {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  border: 1px solid #888;
+  background: #f8f8f8;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+button:hover {
+  background: #eee;
+}
+
+button.danger {
+  border-color: #c33;
+  color: #c33;
+}
+
+fieldset {
+  border: 1px solid #ddd;
+  padding: 0.5rem 1rem;
+}
+
+fieldset label {
+  display: inline-block;
+  margin-right: 1rem;
+}
+
+form label {
+  display: block;
+  margin: 0.75rem 0;
+}
+
+input[type="time"],
+input[type="number"],
+input[type="text"],
+select {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.95rem;
+  border: 1px solid #aaa;
+  border-radius: 3px;
+}
+
+.warning {
+  color: #b56500;
+  font-weight: 500;
+  background: #fff8e0;
+  padding: 0.5rem;
+  border-radius: 4px;
+}

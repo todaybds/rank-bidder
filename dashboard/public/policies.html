@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Rank Bidder — 멀티타임 정책</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <link rel="stylesheet" href="/static/css/policies.css" />
+  </head>
+  <body>
+    <header>
+      <h1>멀티타임 정책</h1>
+      <p class="muted">Story 3.3 — 사이트/키워드 단위 시간대별 Target Rank · Bid Cap.</p>
+      <nav><a href="/">← 대시보드</a></nav>
+    </header>
+
+    <main id="app">
+      <section class="scope-picker">
+        <h2>1. 적용 대상 선택</h2>
+        <label>
+          scope:
+          <select id="scope-type">
+            <option value="site">site</option>
+            <option value="keyword">keyword</option>
+          </select>
+        </label>
+        <label>
+          id:
+          <input id="scope-id" type="text" placeholder="예: kantabile-platform-city or nkw00000000nnnnnn" />
+        </label>
+        <button id="load-policies" type="button">불러오기</button>
+      </section>
+
+      <section class="policy-list">
+        <h2>2. 현재 정책</h2>
+        <table id="policy-table">
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>요일·시각</th>
+              <th>지속</th>
+              <th>Target</th>
+              <th>Cap (₩)</th>
+              <th>v</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="policy-empty" class="muted" hidden>등록된 정책 없음. 아래 폼으로 추가.</p>
+        <p id="policy-overlap" class="warning" hidden></p>
+      </section>
+
+      <section class="policy-form">
+        <h2>3. 신규 / 편집</h2>
+        <form id="policy-form">
+          <input type="hidden" id="form-policy-id" />
+          <input type="hidden" id="form-version" />
+
+          <fieldset>
+            <legend>요일 (1개 이상)</legend>
+            <label><input type="checkbox" name="weekday" value="0" /> 월</label>
+            <label><input type="checkbox" name="weekday" value="1" /> 화</label>
+            <label><input type="checkbox" name="weekday" value="2" /> 수</label>
+            <label><input type="checkbox" name="weekday" value="3" /> 목</label>
+            <label><input type="checkbox" name="weekday" value="4" /> 금</label>
+            <label><input type="checkbox" name="weekday" value="5" /> 토</label>
+            <label><input type="checkbox" name="weekday" value="6" /> 일</label>
+          </fieldset>
+
+          <label>
+            시작 시각 (KST 24h):
+            <input id="start-time" type="time" required />
+          </label>
+
+          <label>
+            지속 (분, 1 ~ 10080):
+            <input id="duration" type="number" min="1" max="10080" step="1" value="60" required />
+          </label>
+
+          <label>
+            Target Rank (1 ~ 10):
+            <input id="target-rank" type="number" min="1" max="10" step="1" value="2" required />
+          </label>
+
+          <label>
+            Bid Cap (₩, 100 ~ 100000):
+            <input id="bid-cap" type="number" min="100" max="100000" step="100" value="5000" required />
+          </label>
+
+          <div class="actions">
+            <button id="submit-policy" type="submit">저장</button>
+            <button id="reset-form" type="button">초기화</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="ops-note">
+        <h3>운영 메모</h3>
+        <ul>
+          <li>요일을 여러 개 체크하면 같은 시간대 정책이 요일 수만큼 생성됩니다 (각 요일 1 row).</li>
+          <li>시간 구간이 자정을 넘어가도 OK (`22:00` + duration `480` = 익일 06:00 까지).</li>
+          <li>중복 구간은 허용됩니다 (D15 r) — 다중 매치 시 가장 최근 등록 정책 우선.</li>
+          <li>저장 즉시 다음 사이클부터 적용 (현재 사이클은 끝까지 기존 cap).</li>
+          <li>Cap 값이 바뀌면 해당 KW의 Cap 도달 타이머 reset (D17).</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="/static/js/policies.js"></script>
+  </body>
+</html>
