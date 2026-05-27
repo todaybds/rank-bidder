@@ -48,7 +48,8 @@ jobs:
         run: uv run pytest decision-engine/tests -v -m "not naver_live and not slow"
 
       - name: Pytest — serp-measurer
-        run: uv run pytest serp-measurer/tests -v
+        # Story 1.4: naver_live 마커는 CI에서 SKIP (실제 m.search.naver.com 호출).
+        run: uv run pytest serp-measurer/tests -v -m "not naver_live"
 
   sam-build:
     name: SAM build validate

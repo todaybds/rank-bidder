@@ -7,6 +7,7 @@ dependencies = [
     "requests>=2.32,<3.0",
     "beautifulsoup4>=4.12,<5.0",
     "boto3>=1.35,<2.0",
+    "structlog>=24.4,<25.0",
 ]
 
 [dependency-groups]
@@ -27,3 +28,6 @@ module-root = "src"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "naver_live: 실제 m.search.naver.com fetch — 로컬 IP에서 호출 (Lambda IP 아님). CI에서 SKIP.",
+]
