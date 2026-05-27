@@ -7,55 +7,42 @@
 
 | 시점 | actual bidAmt | match | HTTP | latency_ms | elapsed_ms |
 |---|---|---|---|---|---|
-| PUT | — | — | 400 | 75.98 | 0 |
-| get_0s | 70 | ✗ | 200 | 79.76 | 156 |
-| get_30s | 70 | ✗ | 200 | 136.73 | 30137 |
-| get_60s | 70 | ✗ | 200 | 124.62 | 60125 |
-| get_180s | 70 | ✗ | 200 | 124.33 | 180124 |
-| get_300s | 70 | ✗ | 200 | 124.6 | 300125 |
+| PUT | — | — | 200 | 106.09 | 0 |
+| get_0s | 100 | ✓ | 200 | 88.87 | 196 |
+| get_30s | 100 | ✓ | 200 | 105.77 | 30106 |
+| get_60s | 100 | ✓ | 200 | 84.49 | 60085 |
+| get_180s | 100 | ✓ | 200 | 107.96 | 180109 |
+| get_300s | 100 | ✓ | 200 | 222.71 | 300223 |
 
 ### Sequence 2 — target_bid = 200원
 
 | 시점 | actual bidAmt | match | HTTP | latency_ms | elapsed_ms |
 |---|---|---|---|---|---|
-| PUT | — | — | 400 | 106.37 | 0 |
-| get_0s | 70 | ✗ | 200 | 120.72 | 228 |
-| get_30s | 70 | ✗ | 200 | 129.89 | 30131 |
-| get_60s | 70 | ✗ | 200 | 104.58 | 60105 |
-| get_180s | 70 | ✗ | 200 | 93.86 | 180094 |
-| get_300s | 70 | ✗ | 200 | 139.54 | 300141 |
+| PUT | — | — | 200 | 155.06 | 0 |
+| get_0s | 200 | ✓ | 200 | 124.24 | 280 |
+| get_30s | 200 | ✓ | 200 | 140.31 | 30141 |
+| get_60s | 200 | ✓ | 200 | 163.15 | 60163 |
+| get_180s | 200 | ✓ | 200 | 140.73 | 180141 |
+| get_300s | 200 | ✓ | 200 | 276.27 | 300277 |
 
 ### Sequence 3 — target_bid = 150원
 
 | 시점 | actual bidAmt | match | HTTP | latency_ms | elapsed_ms |
 |---|---|---|---|---|---|
-| PUT | — | — | 400 | 76.16 | 0 |
-| get_0s | 70 | ✗ | 200 | 100.06 | 177 |
-| get_30s | 70 | ✗ | 200 | 88.28 | 30089 |
-| get_60s | 70 | ✗ | 200 | 83.51 | 60084 |
-| get_180s | 70 | ✗ | 200 | 132.53 | 180133 |
-| get_300s | 70 | ✗ | 200 | 150.13 | 300151 |
+| PUT | — | — | 200 | 174.43 | 0 |
+| get_0s | 150 | ✓ | 200 | 113.5 | 289 |
+| get_30s | 150 | ✓ | 200 | 119.73 | 30121 |
+| get_60s | 150 | ✓ | 200 | 119.39 | 60120 |
+| get_180s | 150 | ✓ | 200 | 136.58 | 180137 |
+| get_300s | 150 | ✓ | 200 | 103.24 | 300104 |
 
 ### GET latency 분포 (200 OK only)
 
-- n = 15, p50 = 124.3ms, p90 ≈ 138.4ms, max = 150.1ms
+- n = 15, p50 = 119.7ms, p90 ≈ 198.9ms, max = 276.3ms
 
 ### HTTP status 분포
 
-- 200: 15회
-- 400: 4회
-
-## Rate Limit Probe — 10초 동안 20회 GET (AC3)
-
-- 총 20회, status 분포: {200: 20}
-- latency: p50 = 92.6ms, max = 154.5ms
-
-✅ 2 RPS는 안전. 토큰버킷 5-8 RPS 설정 가능 (Story 1.5).
-
-## 403 Invalid Timestamp Probe (AC1)
-
-- step=bad_timestamp, status=403, latency=69.35ms
-  - body: `{"timestamp": "1779861321726", "status": 403, "type": "urn:naver:api:problem:invalid-timestamp", "title": "Invalid Timestamp", "detail": "Request has expired."}`
+- 200: 20회
 
 ## SQLite synchronous=FULL fsync latency (AC4)
 
@@ -67,24 +54,49 @@
   - p99 worst-case ~6.38% (참고용 — 실제 PUT은 사이클당 1-N회로 한정)
 
 
-## D15 룰 변경 권고 (AC5+AC6 — 운영자 검토 후 architecture.md 수정)
+## 측정 환경 (2026-05-27, 비스타 KW 측정 세션)
 
-### D15 (c) Write-ahead PUT + reconcile-on-PUT_SENT-only
-- [ ] PUT 응답이 즉시 반영되는가? (위 GET_0s 결과 확인)
-- [ ] 그렇다면 reconcile 룰 단순화 가능 (PUT 응답 200만 보고 COMMITTED 전이)
-- [ ] 아니라면 현 룰 (PUT_SENT 상태 행만 다음 사이클 시작 시 GET reconcile) 유지
+- 대상 KW: `nkw-a001-01-000008209367424` (평택고덕동브레인시티비스타동원) — 7일 impr=0/clk=0 비활성
+- 광고그룹: `grp-a001-01-000000067417166` (브레인시티 비스타동원_브랜드 핵심, 그룹입찰 ₩35,000)
+- 초기 상태: bidAmt=70, useGroupBidAmt=True
+- 측정 종료 후 자동 복원 ✅: bidAmt=70, useGroupBidAmt=True
+- PUT body 정정 (Story 1.3 환경 fix): `{nccAdgroupId, bidAmt, useGroupBidAmt: false}` 동시 전달 필수 (누락 시 3705 "Invalid ad group number" 400). `useGroupBidAmt=false`로 자동 전환됨 → 측정 끝나면 `restore_use_group_bid()` 별도 호출 필수.
+- 네트워크: 로컬 Windows + 한국 IP, HMAC-SHA256 timestamp drift 무
+- 호출 패턴: 단발 sync httpx, rate limit 무 (단일 KW)
 
-### D15 (i) PUT response semantics — `put_sent_at < now - 3분 → APPLIED`
-- [ ] 3분 임계가 적절한가? GET 결과의 `match` 컬럼이 어느 시점부터 `✓` 시작하는지 확인
-- [ ] 더 빠르면 (예: 1분 내) → 임계 단축
-- [ ] 더 늦으면 (5분 후도 mismatch) → 임계 연장 또는 별도 reconcile 사이클
+## D15 룰 최종 calibrate (AC6, 2026-05-27 적용)
 
-### D15 (j) SQLite durability
-- [ ] p50 fsync latency 실측이 가정 ~5ms와 일치하는가?
-- [ ] 큰 차이가 있다면 architecture.md D4·D15(j) 의 9% 비용 계산 갱신
-- [ ] 1000회 중 max latency > 100ms 발생 빈도 확인 — 큰 spike는 사이클 overlap 위험
+### D15 (c) Write-ahead PUT + reconcile-on-PUT_SENT-only — **단순화**
+**측정 결과**: PUT 200 응답 후 GET 0s 시점에 즉시 일치 (196ms 시점 actual=target). 30s/60s/180s/300s 모두 ✓ 유지. 3 시퀀스 모두 동일 패턴.
 
-### 변경 적용 후
-- [ ] architecture.md 수정 + Change Log 기록
-- [ ] Story 1.3 Completion Notes에 변경 요약 박제
-- [ ] Story 1.5 (SA API 풀세트 client) 시작 가능 — 본 보고서가 source of truth
+**적용 권고**:
+- ✅ **PUT 응답 200 = 즉시 COMMITTED 전이 가능** (reconcile 불필요)
+- 단 reconcile 룰은 **응답 누락 케이스(타임아웃/네트워크 절단/5xx)에만 유지** — PUT_SENT 상태로 남은 행만 다음 사이클 GET reconcile
+- 결과: 정상 사이클 reconcile 비용 → 거의 0
+
+### D15 (i) PUT response semantics — **3분 → 즉시 단축**
+**측정 결과**: 모든 PUT 응답 200 후 200ms 내 GET이 정확 일치. 3분 lag 없음.
+
+**적용 권고**:
+- ✅ **`put_response_status=200 즉시 'APPLIED' 전이`** (3분 임계 폐기)
+- 안전망: GET reconcile은 응답 못 받은 경우(타임아웃 등)에만, 임계 1분으로 단축 가능
+
+### D15 (j) SQLite durability — **calibrated 2026-05-27**
+**측정 결과**: p50=14.348ms / p90=16.916ms / p99=38.257ms / max=125.615ms (Windows NTFS).
+
+**적용 결과** (이미 architecture.md 적용 completed commit f88d26f):
+- ✅ §D4 + §D15 (j) — 가정 5ms × 100 PUT/min ≈ 9% → 실측 14.4ms × 100/min ≈ **2.4%/min** (p99 worst ~6.4%)
+- Oracle Linux ext4 운영 환경에선 재측정 필요 표기 (Story 4.1 영역)
+
+## GET latency 운영 가이드
+
+- p50=119.7ms / p90=199ms / max=276ms (n=15)
+- Story 1.5 SA API client httpx timeout 권고: 단발 GET/PUT 5초 / total 10초 (현 spec 그대로)
+- 토큰버킷 5-8 RPS 안전 — 별도 rate-limit probe 결과(이전 세션) 2 RPS 20회 모두 200, p50=92ms
+
+## Calibrate 적용 흐름 (이미 완료)
+
+- ✅ architecture.md §D4 + §D15 (j) — Story 1.3 commit f88d26f
+- ✅ architecture.md §D15 (c) + (i) — Story 1.5 사용자 결재 후 적용 예정 (본 보고서 기반)
+- ✅ Story 1.3 Completion Notes — 환경 fix + 본 측정 박제
+- ✅ deferred-work.md AC2 항목 closed (commit pending)

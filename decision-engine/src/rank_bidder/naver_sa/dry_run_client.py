@@ -59,13 +59,20 @@ def put_bid(
     keyword_id: str,
     bid_amt: int,
     *,
+    adgroup_id: str,
     api_key: str,
     secret_key: str,
     customer_id: str,
     base_url: str = "https://api.searchad.naver.com",
     timeout_s: float = 30.0,
 ) -> tuple[int, dict[str, Any] | None, float]:
-    """``PUT /ncc/keywords/{keyword_id}?fields=bidAmt`` body ``{"bidAmt": <int>}``.
+    """``PUT /ncc/keywords/{keyword_id}?fields=bidAmt,useGroupBidAmt``.
+
+    body ``{"nccAdgroupId": <id>, "bidAmt": <int>, "useGroupBidAmt": false}``.
+
+    Story 1.3 환경 부재 fix (2026-05-27): nccAdgroupId 누락 시 3705 "Invalid ad group number"
+    400 거부. body에 ad group ID + useGroupBidAmt=false 동시 전달해야 PUT 성공.
+    그룹입찰가 사용 KW에 개별 bid 적용 시 useGroupBidAmt 자동 false 전환됨.
 
     Returns:
         ``(status_code, response_body_or_None, latency_ms)``. 4xx/5xx도 raise 안 함 — 측정용.
@@ -83,13 +90,59 @@ def put_bid(
         with httpx.Client(base_url=base_url, timeout=timeout_s) as client:
             response = client.put(
                 uri,
-                params={"fields": "bidAmt"},
-                json={"bidAmt": bid_amt},
+                params={"fields": "bidAmt,useGroupBidAmt"},
+                json={
+                    "nccAdgroupId": adgroup_id,
+                    "bidAmt": bid_amt,
+                    "useGroupBidAmt": False,
+                },
                 headers=headers,
             )
     finally:
         latency_ms = (time.perf_counter() - started) * 1000
 
+    body: dict[str, Any] | None = None
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001
+        body = None
+    return response.status_code, body, round(latency_ms, 2)
+
+
+def restore_use_group_bid(
+    keyword_id: str,
+    *,
+    adgroup_id: str,
+    api_key: str,
+    secret_key: str,
+    customer_id: str,
+    base_url: str = "https://api.searchad.naver.com",
+    timeout_s: float = 30.0,
+) -> tuple[int, dict[str, Any] | None, float]:
+    """그룹입찰가 사용으로 복원 (``useGroupBidAmt=True``).
+
+    Story 1.3 측정 후 ``put_bid`` 가 자동 useGroupBidAmt=False 로 전환시킨 KW를
+    원래 그룹입찰 사용 상태로 복원. 측정 종료 후 try/finally 안에서 호출.
+    """
+    uri = f"/ncc/keywords/{keyword_id}"
+    headers = build_headers(
+        "PUT",
+        uri,
+        api_key=api_key,
+        secret_key=secret_key,
+        customer_id=customer_id,
+    )
+    started = time.perf_counter()
+    try:
+        with httpx.Client(base_url=base_url, timeout=timeout_s) as client:
+            response = client.put(
+                uri,
+                params={"fields": "useGroupBidAmt"},
+                json={"nccAdgroupId": adgroup_id, "useGroupBidAmt": True},
+                headers=headers,
+            )
+    finally:
+        latency_ms = (time.perf_counter() - started) * 1000
     body: dict[str, Any] | None = None
     try:
         body = response.json()
