@@ -5,6 +5,11 @@
 """
 
 from rank_bidder.engine.bid_decision import DecisionOutcome, decide, round_100
+from rank_bidder.engine.cap_race import (
+    evaluate_all_for_cycle,
+    evaluate_keyword_sustained,
+    evaluate_site,
+)
 from rank_bidder.engine.cycle_id import new_cycle_id
 from rank_bidder.engine.exceptions import (
     EngineError,
@@ -34,6 +39,9 @@ __all__ = [
     "cap_streak_started_at",
     "decide",
     "effective_settings",
+    "evaluate_all_for_cycle",
+    "evaluate_keyword_sustained",
+    "evaluate_site",
     "freeze_threshold_seconds",
     "is_frozen",
     "minute_of_week_kst",

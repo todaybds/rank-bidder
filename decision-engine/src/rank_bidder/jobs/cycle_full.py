@@ -35,7 +35,7 @@ from rank_bidder.db.repositories import (
     measurements,
     notifications,
 )
-from rank_bidder.engine import bid_decision, new_cycle_id, recovery, state_machine
+from rank_bidder.engine import bid_decision, cap_race, new_cycle_id, recovery, state_machine
 from rank_bidder.engine.exceptions import FinalGuardFailedError
 from rank_bidder.engine.policy_eval import effective_settings
 from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
@@ -109,6 +109,12 @@ def run_cycle(samples_n: int = 3) -> dict[str, int]:
                     payload={"cycle_id": cycle_id, "count": len(deleted_kw_ids)},
                 )
             log.info("cycle_full.naver_deleted_batch", count=len(deleted_kw_ids))
+
+        # Story 3.2 — cap_race + cap_reached_sustained (24h suppression). Email은 Epic 6.
+        with write_transaction() as conn:
+            race_summary = cap_race.evaluate_all_for_cycle(conn, datetime.now(UTC))
+        if race_summary["sustained_fired"] or race_summary["race_fired"]:
+            log.info("cycle_full.cap_alerts", **race_summary)
 
         log.info("cycle_full.completed", **summary)
         return summary
