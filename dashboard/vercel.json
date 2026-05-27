@@ -1,5 +1,7 @@
 {
   "cleanUrls": true,
+  "buildCommand": "sh scripts/build-env-js.sh",
+  "outputDirectory": "public",
   "headers": [
     {
       "source": "/(.*)",

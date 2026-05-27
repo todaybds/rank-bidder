@@ -24,11 +24,13 @@ btnOpen?.addEventListener("click", () => {
 });
 
 btnSubmit?.addEventListener("click", async () => {
+  // 2026-05-27 code-review 4.5 C1 fix: server expects `campaign_id` (not `naver_campaign_id`).
+  // 2026-05-27 code-review 4.5 C2 fix: response = {imported, skipped, default_cap_applied, errors[]}.
   const site_id = document.getElementById("import-site-id").value.trim();
-  const naver_campaign_id = document.getElementById("import-campaign-id").value.trim();
+  const campaign_id = document.getElementById("import-campaign-id").value.trim();
   const target_rank = Number(document.getElementById("import-target").value);
   const bid_cap = Number(document.getElementById("import-bid-cap").value);
-  if (!site_id || !naver_campaign_id) {
+  if (!site_id || !campaign_id) {
     resultEl.textContent = "site_id + campaign_id 필수";
     return;
   }
@@ -37,14 +39,24 @@ btnSubmit?.addEventListener("click", async () => {
     const resp = await fetch(`${API_BASE}/api/v1/imports`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ site_id, naver_campaign_id, target_rank, bid_cap }),
+      body: JSON.stringify({ site_id, campaign_id, target_rank, bid_cap }),
     });
     const json = await resp.json();
     if (!resp.ok) {
       const code = json?.detail?.error?.code || `HTTP_${resp.status}`;
       throw new Error(code);
     }
-    resultEl.textContent = `성공 ${json.created ?? "?"} · 스킵 ${json.skipped ?? "?"} · 실패 ${json.failed ?? "?"}`;
+    const imported = json.imported ?? 0;
+    const skipped = json.skipped ?? 0;
+    const errors = json.errors ?? [];
+    const capApplied = json.default_cap_applied ?? 0;
+    let msg = `성공 ${imported} · 스킵 ${skipped} · 실패 ${errors.length}`;
+    if (capApplied > 0) msg += ` (cap default 적용 ${capApplied})`;
+    if (errors.length > 0) {
+      const firstErrors = errors.slice(0, 3).map((e) => e.reason || JSON.stringify(e)).join("; ");
+      msg += ` — ${firstErrors}${errors.length > 3 ? "…" : ""}`;
+    }
+    resultEl.textContent = msg;
   } catch (e) {
     resultEl.textContent = `실패: ${e.message}`;
   }

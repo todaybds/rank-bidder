@@ -1,0 +1,13 @@
+[Unit]
+Description=DuckDNS A record updater timer (5min cadence + OnBootSec=30s)
+Documentation=https://www.duckdns.org/install.jsp
+Requires=rank-bidder-duckdns-update.service
+
+[Timer]
+Unit=rank-bidder-duckdns-update.service
+OnBootSec=30s
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

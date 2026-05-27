@@ -1,0 +1,16 @@
+[Unit]
+Description=DuckDNS A record updater (Story 4.1 H7)
+Documentation=https://www.duckdns.org/install.jsp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rank-bidder-duckdns-update.sh
+# token + domain은 root 전용 (mode 0600). curl만 호출하므로 root 권한 충분.
+User=root
+Group=root
+# 보안 hardening — 외부 curl 외에 파일시스템 접근 없음.
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true

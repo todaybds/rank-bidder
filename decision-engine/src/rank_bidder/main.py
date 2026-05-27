@@ -53,25 +53,43 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Story 4.1 — Bearer middleware (env-gated, /health bypass)
+# Story 4.1 H5 — CORS middleware (2026-05-27 code-review): Vercel 정적 dashboard가
+# 다른 origin(`https://*.vercel.app`)에서 fetch하므로 명시 허용 필요. CORS는 bearer
+# *앞에* 등록해야 preflight OPTIONS가 인증 없이 통과 (브라우저 표준 동작).
+# `RANKBIDDER_DASHBOARD_ORIGIN` 미설정 시 same-origin only (no cross-origin).
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+
+_DASHBOARD_ORIGIN = os.environ.get("RANKBIDDER_DASHBOARD_ORIGIN", "").strip()
+if _DASHBOARD_ORIGIN:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[_DASHBOARD_ORIGIN],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["authorization", "content-type"],
+        max_age=600,
+    )
+
+# Story 4.1 — Bearer middleware (env-gated, /health bypass).
+# **주의 (2026-05-27 code-review F2)**: bearer는 마지막에 register해서 inbound 요청에서
+# 가장 먼저 실행되도록 유지. 후속 미들웨어 추가 시 install_bearer 호출을 무조건 마지막에.
 from rank_bidder.auth.bearer import install as install_bearer  # noqa: E402
 
 install_bearer(app)
 
 # Story 2.1 — keyword bulk import router
+# Story 4.5 — system pause/resume + chat health stub
+from rank_bidder.api.chat import router as chat_router  # noqa: E402
 from rank_bidder.api.imports import router as imports_router  # noqa: E402
 
 # Story 2.2 — keyword toggle router
 from rank_bidder.api.keywords import router as keywords_router  # noqa: E402
 
-# Story 2.3 — site toggle router
-from rank_bidder.api.sites import router as sites_router  # noqa: E402
-
 # Story 3.3 — policies CRUD router
 from rank_bidder.api.policies import router as policies_router  # noqa: E402
 
-# Story 4.5 — system pause/resume + chat health stub
-from rank_bidder.api.chat import router as chat_router  # noqa: E402
+# Story 2.3 — site toggle router
+from rank_bidder.api.sites import router as sites_router  # noqa: E402
 from rank_bidder.api.system import router as system_router  # noqa: E402
 
 app.include_router(imports_router)

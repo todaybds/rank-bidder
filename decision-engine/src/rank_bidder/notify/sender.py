@@ -76,10 +76,21 @@ def run_once(now: datetime | None = None, *, dry_run: bool | None = None) -> dic
     cfg = smtp_client.Config.from_env()
     effective_dry = bool(dry_run) or cfg.is_dry_run
 
+    # 2026-05-27 code-review CRITICAL C1 fix: caller가 `dry_run=True` 강제 시 env가
+    # 정상 SMTP 설정이어도 실제 발송 금지. 이전엔 cfg=None 전달 → send()가 env 재읽음 →
+    # is_dry_run=False → 실제 SMTP 발송. dry-run safety net이 silent 우회됐음.
+    # send() 안에서 from_env 재실행해도 cfg.is_dry_run=True 보장 위해 None 전달이 아니라
+    # 분기 자체에서 SMTP call skip (아래 if effective_dry: log only).
+    send_cfg = None if effective_dry else cfg
+
     for n in pending:
         subject, body = templates.render(n)
         try:
-            smtp_client.send(subject, body, cfg=cfg if not dry_run else None)
+            if effective_dry:
+                # SMTP 호출 자체 skip — dry_run safety net 강제 보장.
+                log.info("notify.dry_run_skip", notification_id=n.id, subject=subject)
+            else:
+                smtp_client.send(subject, body, cfg=send_cfg)
         except smtp_client.SMTPSendError as exc:
             log.error("notify.send_failed", notification_id=n.id, error=str(exc))
             summary["failed"] += 1

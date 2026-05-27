@@ -8,7 +8,16 @@ Wants=network-online.target
 Type=notify
 User=caddy
 Group=caddy
-ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
+# 2026-05-27 code-review H6 fix: LogsDirectory/StateDirectory/ConfigurationDirectory —
+# systemd가 /var/log/caddy + /var/lib/caddy + /etc/caddy 자동 생성 + chown caddy:caddy.
+# ACME challenge state persist (`/var/lib/caddy/.local/share/caddy/`) 안전 보장 →
+# TLS 60일 갱신 silent 실패 차단.
+LogsDirectory=caddy
+StateDirectory=caddy
+ConfigurationDirectory=caddy
+# 2026-05-27 code-review M5: `--environ`는 future-secret을 journald에 leak 위험 →
+# 정상 boot 시 제거 (caddy environ 명령으로 ad-hoc 진단 가능).
+ExecStart=/usr/bin/caddy run --config /etc/caddy/Caddyfile
 ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force
 TimeoutStopSec=5s
 LimitNOFILE=1048576
