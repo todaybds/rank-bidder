@@ -108,7 +108,10 @@ def test_i6_final_guard_blocks_disabled_keyword(seeded: str) -> None:
         keywords.update(conn, seeded, KeywordUpdate(enabled=False), expected_version=kw.version)
 
     # 별도 transaction에서 PUT_SENT 시도 → final guard raise
-    with pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"), write_transaction() as conn:
+    with (
+        pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"),
+        write_transaction() as conn,
+    ):
         state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
 
     # caller 책임: FAILED upsert를 새 transaction에서 박제 (cycle_full.py 패턴)
@@ -147,7 +150,10 @@ def test_i6_final_guard_blocks_disabled_site(seeded: str) -> None:
         assert s is not None
         sites.update(conn, SITE_ID, SiteUpdate(enabled=False), expected_version=s.version)
 
-    with pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"), write_transaction() as conn:
+    with (
+        pytest.raises(FinalGuardFailedError, match="DISABLED_DURING_CYCLE"),
+        write_transaction() as conn,
+    ):
         state_machine.transition(conn, CYCLE_ID, seeded, "PUT_SENT")
 
     with write_transaction() as conn:
