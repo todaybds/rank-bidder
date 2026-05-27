@@ -34,10 +34,14 @@ class SQLiteBusyError(Exception):
     """File lock 대기 시간 초과 — D15(h) HTTP 503으로 매핑."""
 
 
-def configure(db_path: Path) -> None:
-    """테스트/명시적 주입을 위한 DB 경로 설정. env 우선 적용을 override."""
+def configure(db_path: Path | None) -> None:
+    """테스트/명시적 주입을 위한 DB 경로 설정. env 우선 적용을 override.
+
+    ``None`` 을 전달하면 module-level override 해제 → env 변수로 fallback.
+    pytest fixture teardown에서 사용.
+    """
     global _db_path
-    _db_path = Path(db_path)
+    _db_path = Path(db_path) if db_path is not None else None
 
 
 def get_db_path() -> Path:

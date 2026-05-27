@@ -5,6 +5,7 @@ Story 1.9에서 systemd unit, /health DB heartbeat, cron 통합으로 강화 예
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -20,14 +21,28 @@ log = structlog.get_logger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Startup에서 SQLite 마이그레이션 적용.
 
-    ``RANKBIDDER_DB_PATH``가 없으면 (예: TestClient unit 테스트 환경) 경고 후 skip.
-    Production 배포는 systemd EnvironmentFile로 항상 설정.
+    - ``RANKBIDDER_DB_PATH`` 미설정 + ``RANKBIDDER_ENV != prod`` → warning + skip
+      (TestClient/unit test 호환).
+    - ``RANKBIDDER_DB_PATH`` 미설정 + ``RANKBIDDER_ENV == prod`` → 즉시 fail
+      (prod에서 env 누락이 silent boot로 가는 사고 차단).
+    - 그 외 모든 예외 (PRAGMA verification 실패, sqlite3 OperationalError 등)는
+      그대로 propagate — startup 실패로 처리.
     """
-    try:
-        applied = up(DEFAULT_MIGRATIONS_DIR)
-        log.info("startup.migrations_applied", count=applied)
-    except RuntimeError as exc:
-        log.warning("startup.migrations_skipped", reason=str(exc))
+    db_path_set = bool(os.environ.get("RANKBIDDER_DB_PATH"))
+    is_prod = os.environ.get("RANKBIDDER_ENV", "").lower() == "prod"
+
+    if not db_path_set:
+        if is_prod:
+            raise RuntimeError("RANKBIDDER_DB_PATH required when RANKBIDDER_ENV=prod")
+        log.warning(
+            "startup.migrations_skipped",
+            reason="RANKBIDDER_DB_PATH not set (non-prod env)",
+        )
+        yield
+        return
+
+    applied = up(DEFAULT_MIGRATIONS_DIR)
+    log.info("startup.migrations_applied", count=applied)
     yield
     # shutdown hook 자리 (Story 1.9에서 graceful drain).
 

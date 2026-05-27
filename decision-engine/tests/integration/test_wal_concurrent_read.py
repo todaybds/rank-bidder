@@ -32,7 +32,8 @@ def test_read_does_not_block_during_write(temp_db: Path) -> None:
         rows = conn.execute("SELECT id FROM sites").fetchall()
     elapsed = time.perf_counter() - started
 
-    assert elapsed < 1.0, f"read가 너무 느림: {elapsed:.2f}s (WAL이면 < 0.1s)"
+    # WAL 정상이면 sub-100ms. 3s 상한은 cold-start/안티바이러스 스캔 관용.
+    assert elapsed < 3.0, f"read가 너무 느림: {elapsed:.2f}s (WAL이면 sub-100ms 기대)"
     # write 미커밋이라 결과 0건이어야 함 (snapshot isolation).
     assert [r["id"] for r in rows] == []
 

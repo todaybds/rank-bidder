@@ -82,9 +82,12 @@ def update(
         set_parts.append("enabled = ?")
         set_params.append(int(payload.enabled))
     if not set_parts:
+        # no-op update — 그래도 version 검증은 필요 (stale client lost-update 차단).
         existing = get(conn, keyword_id)
         if existing is None:
             raise VersionConflictError(TABLE, keyword_id, expected_version, None)
+        if existing.version != expected_version:
+            raise VersionConflictError(TABLE, keyword_id, expected_version, existing.version)
         return existing
 
     update_with_version(
@@ -99,13 +102,15 @@ def update(
 
 
 def delete(conn: sqlite3.Connection, keyword_id: str, expected_version: int) -> None:
-    row = conn.execute(f"SELECT version FROM {TABLE} WHERE id = ?", (keyword_id,)).fetchone()
-    if row is None:
-        raise VersionConflictError(TABLE, keyword_id, expected_version, None)
-    current = int(row["version"])
-    if current != expected_version:
+    """Atomic delete with D5 version check (TOCTOU-free)."""
+    cursor = conn.execute(
+        f"DELETE FROM {TABLE} WHERE id = ? AND version = ?",
+        (keyword_id, expected_version),
+    )
+    if cursor.rowcount == 0:
+        row = conn.execute(f"SELECT version FROM {TABLE} WHERE id = ?", (keyword_id,)).fetchone()
+        current = int(row["version"]) if row is not None else None
         raise VersionConflictError(TABLE, keyword_id, expected_version, current)
-    conn.execute(f"DELETE FROM {TABLE} WHERE id = ?", (keyword_id,))
 
 
 def _require_row(conn: sqlite3.Connection, keyword_id: str) -> Keyword:

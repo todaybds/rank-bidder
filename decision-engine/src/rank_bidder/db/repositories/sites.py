@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 
 from rank_bidder.db.models import Site, SiteCreate, SiteUpdate
-from rank_bidder.db.version import update_with_version
+from rank_bidder.db.version import VersionConflictError, update_with_version
 
 TABLE = "sites"
 
@@ -56,12 +56,12 @@ def update(
         set_parts.append("enabled = ?")
         set_params.append(int(payload.enabled))
     if not set_parts:
-        # no-op update — return current
+        # no-op update — 그래도 version 검증은 필요 (stale client lost-update 차단).
         existing = get(conn, site_id)
         if existing is None:
-            from rank_bidder.db.version import VersionConflictError
-
             raise VersionConflictError(TABLE, site_id, expected_version, None)
+        if existing.version != expected_version:
+            raise VersionConflictError(TABLE, site_id, expected_version, existing.version)
         return existing
 
     update_with_version(
@@ -76,17 +76,15 @@ def update(
 
 
 def delete(conn: sqlite3.Connection, site_id: str, expected_version: int) -> None:
-    row = conn.execute(f"SELECT version FROM {TABLE} WHERE id = ?", (site_id,)).fetchone()
-    if row is None:
-        from rank_bidder.db.version import VersionConflictError
-
-        raise VersionConflictError(TABLE, site_id, expected_version, None)
-    current = int(row["version"])
-    if current != expected_version:
-        from rank_bidder.db.version import VersionConflictError
-
+    """Atomic delete with D5 version check (TOCTOU-free)."""
+    cursor = conn.execute(
+        f"DELETE FROM {TABLE} WHERE id = ? AND version = ?",
+        (site_id, expected_version),
+    )
+    if cursor.rowcount == 0:
+        row = conn.execute(f"SELECT version FROM {TABLE} WHERE id = ?", (site_id,)).fetchone()
+        current = int(row["version"]) if row is not None else None
         raise VersionConflictError(TABLE, site_id, expected_version, current)
-    conn.execute(f"DELETE FROM {TABLE} WHERE id = ?", (site_id,))
 
 
 def _require_row(conn: sqlite3.Connection, site_id: str) -> Site:

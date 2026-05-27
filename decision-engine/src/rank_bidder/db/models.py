@@ -35,9 +35,9 @@ def _to_utc_datetime(value: Any) -> datetime:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
     if isinstance(value, str):
-        # SQLite datetime('now') = "YYYY-MM-DD HH:MM:SS" (naive UTC)
-        normalized = value.replace("T", " ").rstrip("Z").strip()
-        parsed = datetime.fromisoformat(normalized)
+        # Python 3.11+ ``datetime.fromisoformat`` 가 'T'/' ' 분리자 + 'Z' suffix
+        # 모두 네이티브 지원. SQLite ``datetime('now')`` = "YYYY-MM-DD HH:MM:SS" naive UTC.
+        parsed = datetime.fromisoformat(value.strip())
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=UTC)
         return parsed.astimezone(UTC)
@@ -93,7 +93,8 @@ class Site(SiteBase):
         return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-SiteRead = Site
+class SiteRead(Site):
+    """Public read DTO. 현재는 ``Site``와 동일하지만 future serializer 분리 hook."""
 
 
 # ---------------------------------------------------------------------------
@@ -151,4 +152,5 @@ class Keyword(KeywordBase):
         return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-KeywordRead = Keyword
+class KeywordRead(Keyword):
+    """Public read DTO. 현재는 ``Keyword``와 동일하지만 future serializer 분리 hook."""

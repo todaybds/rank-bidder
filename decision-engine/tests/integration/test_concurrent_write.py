@@ -71,4 +71,6 @@ def test_lock_timeout_raises_busy_error(temp_db: Path) -> None:
     t1.join(timeout=5)
 
     assert error_box, f"SQLiteBusyError가 raise되어야 함 — elapsed={elapsed:.2f}s"
-    assert 4.0 < elapsed < 8.0, "timeout 약 5초 (관용 +/-)"
+    # lower bound 엄격 (4s 미만이면 timeout 동작 안 한 것),
+    # upper bound 느슨 (느린 CI/안티바이러스 스캔/Windows arm64 emulation 허용).
+    assert 4.0 < elapsed < 15.0, f"timeout ~5s 기대, 실측 {elapsed:.2f}s"

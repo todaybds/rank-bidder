@@ -48,6 +48,23 @@ def test_delete_with_version_check(temp_db: Path) -> None:
         assert sites_repo.get(conn, "s-x") is None
 
 
+def test_noop_update_rejects_stale_version(temp_db: Path) -> None:
+    """P2: payload 전체 None이어도 version mismatch면 VersionConflictError.
+
+    이전 회귀: empty SiteUpdate + 잘못된 expected_version → 조용히 existing 반환
+    (lost-update 감지 우회).
+    """
+    with write_transaction() as conn:
+        sites_repo.create(conn, SiteCreate(id="s-noop", name="n"))
+        sites_repo.update(conn, "s-noop", SiteUpdate(enabled=False), expected_version=0)
+        # 현재 version = 1
+
+    with write_transaction() as conn, pytest.raises(VersionConflictError) as exc_info:
+        sites_repo.update(conn, "s-noop", SiteUpdate(), expected_version=0)
+    assert exc_info.value.current_version == 1
+    assert exc_info.value.expected_version == 0
+
+
 def test_delete_rejects_stale_version(temp_db: Path) -> None:
     with write_transaction() as conn:
         sites_repo.create(conn, SiteCreate(id="s-y", name="y"))
