@@ -1,19 +1,27 @@
 """Story 1.3 spike — 최소 PUT/GET bidAmt client.
 
-Story 1.5에서 풀세트 client (`pyrate-limiter` + `tenacity` + `ntp_guard`)가
-이 모듈을 deprecated 시킴. 본 파일은 측정 spike 전용 — 재시도 없음, rate limit 없음.
-
-NFR-8 단순성: stdlib + ``httpx`` (Story 1.1에 이미 pin)만 사용. 신규 dep 없음.
+⚠️ DEPRECATED (Story 1.5, 2026-05-27): production code는 ``naver_sa.bid.put_bid`` +
+``naver_sa.estimate.average_position_bid`` 사용. 본 모듈은 ``test_naver_semantics_dryrun``
+측정 호환 보존용. Story 1.6에서 삭제 예정.
 """
 
 from __future__ import annotations
 
 import time
+import warnings
 from typing import Any
 
 import httpx
 
 from rank_bidder.naver_sa.auth import build_headers
+
+warnings.warn(
+    "rank_bidder.naver_sa.dry_run_client is DEPRECATED (Story 1.5). "
+    "Use rank_bidder.naver_sa.bid / rank_bidder.naver_sa.estimate. "
+    "This module will be removed in Story 1.6.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def get_keyword(
