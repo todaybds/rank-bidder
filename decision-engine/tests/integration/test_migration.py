@@ -48,7 +48,8 @@ def test_up_is_idempotent(temp_db: Path) -> None:
     applied = up(DEFAULT_MIGRATIONS_DIR)
     assert applied == 0
     with get_connection() as conn:
-        assert current_version(conn) == 1
+        # Story 1.6 추가 후 latest=2
+        assert current_version(conn) == 2
 
 
 def test_discover_migrations_rejects_non_sequential(tmp_path: Path) -> None:
@@ -67,8 +68,53 @@ def test_discover_migrations_rejects_duplicate(tmp_path: Path) -> None:
         discover_migrations(tmp_path)
 
 
-def test_up_on_empty_db_returns_one(empty_db: Path) -> None:
-    """AC1: 0 → 1 적용 시 카운트 1."""
+def test_up_on_empty_db_returns_all_pending(empty_db: Path) -> None:
+    """AC1 (Story 1.6 update): 0 → latest 적용 시 카운트 = 전체 migration 수."""
     configure(empty_db)
     applied = up(DEFAULT_MIGRATIONS_DIR)
-    assert applied == 1
+    # 0001 + 0002 = 2 (Story 1.6 시점)
+    assert applied == 2
+
+
+def test_0002_creates_cycle_entries_measurements_decisions(temp_db: Path) -> None:
+    """Story 1.6 AC1+AC2+AC4+AC5: 3 신규 테이블 + 인덱스 5개."""
+    with get_connection() as conn:
+        tables = {
+            row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+            )
+        }
+    assert {"cycle_entries", "measurements", "decisions"} <= tables
+    assert {
+        "idx_cycle_entries_active",
+        "idx_measurements_kw_time",
+        "idx_decisions_kw_time",
+        "idx_decisions_decided_at",
+    } <= indexes
+
+
+def test_0002_partial_index_filter_recorded(temp_db: Path) -> None:
+    """Story 1.6 AC3: idx_cycle_entries_active 가 partial(WHERE 절 포함)."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_cycle_entries_active'"
+        ).fetchone()
+    assert row is not None
+    sql = row["sql"]
+    assert "WHERE" in sql
+    assert "PUT_SENT" in sql
+    assert "PLANNED" in sql
+
+
+def test_0002_records_version_2(temp_db: Path) -> None:
+    """Story 1.6 AC1: schema_migrations 에 version=2 행 박제."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT version FROM schema_migrations WHERE version = 2"
+        ).fetchone()
+    assert row is not None
+    assert int(row["version"]) == 2

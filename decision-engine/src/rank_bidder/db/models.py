@@ -154,3 +154,125 @@ class Keyword(KeywordBase):
 
 class KeywordRead(Keyword):
     """Public read DTO. 현재는 ``Keyword``와 동일하지만 future serializer 분리 hook."""
+
+
+# ---------------------------------------------------------------------------
+# CycleEntry — D15 (b) state machine row (Story 1.6)
+# ---------------------------------------------------------------------------
+
+_CYCLE_STATES = {"PLANNED", "MEASURED", "DECIDED", "PUT_SENT", "COMMITTED", "FAILED"}
+
+
+class CycleEntryCreate(BaseModel):
+    model_config = _BASE_CONFIG
+
+    cycle_id: str = Field(min_length=1, max_length=64)
+    keyword_id: str = Field(min_length=1, max_length=64)
+    state: str = Field(default="PLANNED")
+
+    @field_validator("state")
+    @classmethod
+    def _validate_state(cls, v: str) -> str:
+        if v not in _CYCLE_STATES:
+            raise ValueError(f"state must be in {sorted(_CYCLE_STATES)}, got {v!r}")
+        return v
+
+
+class CycleEntry(CycleEntryCreate):
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_dt(cls, v: Any) -> datetime:
+        return _to_utc_datetime(v)
+
+    @field_serializer("created_at", "updated_at")
+    def _serialize_dt(self, v: datetime) -> str:
+        return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+# ---------------------------------------------------------------------------
+# Measurement — sampler 결과 영속 (Story 1.6)
+# ---------------------------------------------------------------------------
+
+
+class MeasurementCreate(BaseModel):
+    model_config = _BASE_CONFIG
+
+    keyword_id: str = Field(min_length=1, max_length=64)
+    rank_samples: list[int | None] = Field(min_length=1)
+    rank_final: int | None = Field(default=None, ge=1, le=100)
+    current_bid: int = Field(ge=0)
+
+
+class Measurement(BaseModel):
+    model_config = _BASE_CONFIG
+
+    id: int
+    keyword_id: str
+    measured_at: datetime
+    rank_samples: list[int | None]
+    rank_final: int | None
+    current_bid: int
+
+    @field_validator("measured_at", mode="before")
+    @classmethod
+    def _coerce_dt(cls, v: Any) -> datetime:
+        return _to_utc_datetime(v)
+
+    @field_validator("rank_samples", mode="before")
+    @classmethod
+    def _coerce_samples(cls, v: Any) -> list[int | None]:
+        # DB는 TEXT(JSON) — 호출자가 json.loads 후 전달하거나, 여기서 처리.
+        if isinstance(v, str):
+            import json as _json
+
+            return _json.loads(v)
+        return v
+
+    @field_serializer("measured_at")
+    def _serialize_dt(self, v: datetime) -> str:
+        return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+# ---------------------------------------------------------------------------
+# Decision — 결정 엔진 출력 log (Story 1.6)
+# ---------------------------------------------------------------------------
+
+_DECISION_VALUES = {"BID_UP", "BID_DOWN", "HOLD", "CAP_REACHED", "SKIP_STALE"}
+
+
+class DecisionCreate(BaseModel):
+    model_config = _BASE_CONFIG
+
+    keyword_id: str = Field(min_length=1, max_length=64)
+    cycle_id: str = Field(min_length=1, max_length=64)
+    decision: str
+    old_bid: int = Field(ge=0)
+    new_bid: int = Field(ge=0)
+    rank_observed: int | None = Field(default=None, ge=1, le=100)
+    reason: str | None = None
+    api_response_status: int | None = None
+    api_error: str | None = None
+
+    @field_validator("decision")
+    @classmethod
+    def _validate_decision(cls, v: str) -> str:
+        if v not in _DECISION_VALUES:
+            raise ValueError(f"decision must be in {sorted(_DECISION_VALUES)}, got {v!r}")
+        return v
+
+
+class Decision(DecisionCreate):
+    id: int
+    decided_at: datetime
+
+    @field_validator("decided_at", mode="before")
+    @classmethod
+    def _coerce_dt(cls, v: Any) -> datetime:
+        return _to_utc_datetime(v)
+
+    @field_serializer("decided_at")
+    def _serialize_dt(self, v: datetime) -> str:
+        return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
