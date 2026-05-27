@@ -81,6 +81,25 @@ vercel env add RANKBIDDER_API_BASE  # https://rank-bidder.duckdns.org
 vercel --prod
 ```
 
+### 6. 사이트 + KW seed
+
+```bash
+TOKEN=$RANKBIDDER_AUTH_TOKEN
+BASE=https://rank-bidder.duckdns.org
+
+# 사이트 등록
+curl -X POST "$BASE/api/v1/sites" \
+  -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"id":"kantabile-platform-city","name":"칸타빌 플랫폼시티"}'
+
+# 키워드 일괄 import (사이트당 1 캠페인)
+curl -X POST "$BASE/api/v1/imports" \
+  -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{"site_id":"kantabile-platform-city","naver_campaign_id":"<NCC...>","target_rank":2,"bid_cap":8000}'
+```
+
+또는 dashboard `index.html` 우측 상단 "키워드 import" 모달.
+
 ## 검증
 
 ```bash
