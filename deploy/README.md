@@ -1,6 +1,8 @@
-# deploy — Story 4.1 외부 셋업 가이드 (2026-05-27 code-review 반영)
+# deploy — Story 4.1 외부 셋업 가이드 (2026-05-27 code-review 반영, 2026-05-28 GCP pivot)
 
-Oracle Cloud Always Free Seoul VM 1인 운영 전제. 운영자(본인)만 사용 — robots noindex + Bearer 토큰.
+GCP Compute Engine Always Free (us-west1, e2-micro, Ubuntu 22.04 LTS) 1인 운영 전제. 운영자(본인)만 사용 — robots noindex + Bearer 토큰.
+
+> **2026-05-28 pivot 메모**: 본래 Oracle Cloud Always Free Seoul 대상이었으나 Oracle 가입이 anti-fraud로 차단되어 GCP로 변경. Seoul → us-west1(Oregon). 네이버 SA API는 region 무관 + SERP 측정은 별도 Lambda Seoul에서 수행 → 운영 영향 없음. SSH latency ~150ms는 cron 자동운영이라 무시 가능.
 
 ## 산출물
 
@@ -20,33 +22,74 @@ Oracle Cloud Always Free Seoul VM 1인 운영 전제. 운영자(본인)만 사�
 2. 서브도메인 `rank-bidder` 발급 → token (UUID) 메모.
 3. A record는 비워두기 — 아래 4단계에서 update script가 자동 채움.
 
-### 2. Oracle Cloud VM (Always Free Seoul)
+### 2. GCP VM (Always Free us-west1 e2-micro)
+
+**VM 생성** (콘솔 또는 gcloud SDK):
+
+```powershell
+# 로컬 PowerShell (gcloud SDK 인증 + default project=todaybds 설정 후)
+gcloud compute instances create rank-bidder `
+  --zone=us-west1-a `
+  --machine-type=e2-micro `
+  --image-family=ubuntu-2204-lts `
+  --image-project=ubuntu-os-cloud `
+  --tags=http-server,https-server
+```
+
+**방화벽 (GCP VPC firewall rules)**: 기본 프로젝트의 `default-allow-http` / `default-allow-https`가 자동 활성. VM에 `http-server` + `https-server` 네트워크 태그가 붙어있어야 적용됨 (위 생성 명령에 포함). 기존 VM에 태그가 없으면:
+
+```powershell
+gcloud compute instances add-tags rank-bidder --zone=us-west1-a --tags=http-server,https-server
+```
+
+> 호스트 방화벽(`ufw`)은 GCP Ubuntu 이미지에서 기본 비활성 — 손댈 필요 없음. GCP VPC firewall에서 일괄 관리.
+
+**SSH 접속**:
+
+```powershell
+gcloud compute ssh rank-bidder --zone=us-west1-a
+# 또는 GCP 콘솔 → Compute Engine → VM 인스턴스 → SSH 버튼
+```
+
+**Caddy + 유틸 설치 (VM 안에서, Ubuntu 22.04)**:
 
 ```bash
-# 80/443 ingress 룰 — Security List → Add Ingress Rule
-#   Source 0.0.0.0/0, TCP, Dest Port 80 + 443
+sudo apt update
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl git dnsutils
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install -y caddy
+# apt가 기본 caddy.service를 enable/start하지만, 3단계에서 /etc/systemd/system/caddy.service로
+# 덮어쓰면 우리 unit이 우선. 충돌 방지 위해 일단 정지:
+sudo systemctl disable --now caddy
+```
 
-# 호스트 방화벽
-sudo firewall-cmd --add-service=http --add-service=https --permanent
-sudo firewall-cmd --reload
+**uv 설치 (Python 패키지 매니저, 시스템 전역)**:
 
-# Caddy 설치 (Oracle Linux 9)
-sudo dnf install -y 'dnf-command(copr)'
-sudo dnf copr enable -y @caddy/caddy
-sudo dnf install -y caddy
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin sh
+# 검증
+/usr/local/bin/uv --version
 ```
 
 ### 3. 산출물 배포
 
 ```bash
 # rank-bidder 시스템 유저 생성 (login shell 차단)
-sudo useradd -r -s /sbin/nologin -d /opt/rank-bidder rank-bidder
+sudo useradd -r -s /usr/sbin/nologin -d /opt/rank-bidder rank-bidder
 
 # 코드 (rank-bidder가 직접 clone 못 하므로 root로 clone 후 chown)
 sudo git clone https://github.com/todaybds/rank-bidder.git /opt/rank-bidder
+sudo chown -R rank-bidder: /opt/rank-bidder
+
+# Python 3.13 + venv (Ubuntu 22.04 기본은 3.10 → uv가 3.13 다운로드/캐시)
 cd /opt/rank-bidder/decision-engine
-sudo -u rank-bidder uv venv .venv
-sudo -u rank-bidder uv sync
+sudo -u rank-bidder /usr/local/bin/uv python install 3.13
+sudo -u rank-bidder /usr/local/bin/uv venv .venv --python 3.13
+sudo -u rank-bidder /usr/local/bin/uv sync
 # venv 경로 = /opt/rank-bidder/decision-engine/.venv  ← systemd unit과 일치 확인 (code-review H4)
 
 # systemd unit 배치
@@ -66,7 +109,6 @@ sudo chmod 0600 /etc/duckdns/token
 
 # 환경
 sudo install -d -o rank-bidder -m 0755 /var/lib/rank-bidder
-sudo chown -R rank-bidder: /opt/rank-bidder
 
 # /opt/rank-bidder/.env 작성:
 #   RANKBIDDER_DB_PATH=/var/lib/rank-bidder/rank_bidder.db
@@ -93,7 +135,7 @@ sudo systemctl status rank-bidder-duckdns-update.service
 
 # A record 확인 (resolver propagation ~5min)
 dig +short rank-bidder.duckdns.org
-# → Oracle VM public IPv4 출력
+# → GCP VM external IPv4 출력
 
 # 이후 5min 주기로 자동 갱신 (VM stop/start 시에도 자동 복구)
 sudo systemctl list-timers rank-bidder-duckdns-update.timer
@@ -105,14 +147,14 @@ sudo systemctl list-timers rank-bidder-duckdns-update.timer
 
 | 위치 | 키 | 용도 |
 |---|---|---|
-| Oracle VM `/opt/rank-bidder/.env` | `RANKBIDDER_AUTH_TOKEN` | uvicorn 미들웨어 검증 |
+| GCP VM `/opt/rank-bidder/.env` | `RANKBIDDER_AUTH_TOKEN` | uvicorn 미들웨어 검증 |
 | Vercel project env | `RANKBIDDER_AUTH_TOKEN` | dashboard build script가 env.js에 박제 |
 | AWS SSM Parameter Store | `/rank-bidder/auth_token` (SecureString) | 백업 + 회전 시 단일 진실 |
 
 **토큰 회전 절차 (`openssl rand -base64 48` 신규 토큰):**
 
 1. SSM Parameter Store에 신규 토큰 put (`aws ssm put-parameter --name /rank-bidder/auth_token --value "$NEW" --type SecureString --overwrite`).
-2. Oracle VM `.env` 갱신 + `sudo systemctl restart rank-bidder-api`.
+2. GCP VM `.env` 갱신 + `sudo systemctl restart rank-bidder-api`.
 3. Vercel env 갱신 (`vercel env rm RANKBIDDER_AUTH_TOKEN production && vercel env add RANKBIDDER_AUTH_TOKEN production`) + `vercel --prod` 재배포 (build script가 env.js에 반영).
 
 ### 6. Vercel 정적 dashboard (code-review C1)
@@ -171,8 +213,10 @@ curl https://rank-bidder.duckdns.org/robots.txt
 ## 트러블슈팅
 
 - **401 with valid token**: `.env`의 토큰과 curl `-H Bearer` 값 정확 일치 확인. 공백·줄바꿈 주의.
-- **uvicorn ENOENT/실패**: venv 경로 = `/opt/rank-bidder/decision-engine/.venv/bin/uvicorn`. `sudo -u rank-bidder uv sync` 다시 실행.
+- **uvicorn ENOENT/실패**: venv 경로 = `/opt/rank-bidder/decision-engine/.venv/bin/uvicorn`. `sudo -u rank-bidder /usr/local/bin/uv sync` 다시 실행.
+- **uv: command not found**: `UV_INSTALL_DIR=/usr/local/bin` 안 먹었을 가능성. `which uv` → 없으면 `curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin sh` 재실행.
 - **Let's Encrypt 실패**: DuckDNS DNS propagation 대기 (~5 min). `sudo journalctl -u caddy -f`. systemd unit이 LogsDirectory/StateDirectory 사용 — `/var/lib/caddy` ACME state 존재 확인.
+- **Caddy: address already in use (80/443)**: apt 기본 caddy.service가 살아있을 가능성. `sudo systemctl status caddy` 확인 + `sudo systemctl disable --now caddy` 후 재시작.
 - **Vercel dashboard 401**: env.js가 비어있을 가능성. `vercel env ls`로 RANKBIDDER_AUTH_TOKEN 확인 + `vercel --prod` 재배포 후 `view-source:` 로 env.js 토큰 박제 확인.
 - **VM 재부팅 후 dashboard 접속 안 됨**: DuckDNS A record가 새 IP 반영 안 됐을 가능성. `sudo systemctl status rank-bidder-duckdns-update.service` 마지막 실행 OK 확인. `dig +short rank-bidder.duckdns.org` 비교.
 - **CORS 차단**: `.env`의 `RANKBIDDER_DASHBOARD_ORIGIN` 이 실제 Vercel URL과 정확 일치하는지 (https://, 끝 슬래시 없이) 확인.

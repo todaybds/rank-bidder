@@ -1,7 +1,7 @@
 [project]
 name = "decision-engine"
 version = "0.1.0"
-description = "Rank Bidder — Decision Engine (Oracle VM, FastAPI + SQLite + cron)"
+description = "Rank Bidder — Decision Engine (GCP VM, FastAPI + SQLite + cron)"
 readme = "README.md"
 authors = [
     { name = "todaybds", email = "166988086+todaybds@users.noreply.github.com" }

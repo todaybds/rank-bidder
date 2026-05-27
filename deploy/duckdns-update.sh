@@ -1,7 +1,7 @@
 #!/bin/sh
 # DuckDNS A record updater (Story 4.1 H7 fix, 2026-05-27 code-review).
 #
-# Oracle Cloud Always Free Seoul VM의 public IPv4는 VM stop/start 시 변경 가능.
+# GCP e2-micro Always Free (us-west1) VM의 public IPv4는 VM stop/start 시 변경 가능.
 # DuckDNS A record가 ephemeral IP를 따라가지 않으면 도메인 dead → Let's Encrypt 60일
 # 갱신 silent 실패 + 모든 dashboard fetch 401(인증 통과 못함) 또는 timeout.
 #
