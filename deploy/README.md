@@ -11,6 +11,10 @@ GCP Compute Engine Always Free (us-west1, e2-micro, Ubuntu 22.04 LTS) 1인 운�
 | `Caddyfile` | `/etc/caddy/Caddyfile` | rank-bidder.duckdns.org → uvicorn 8000 reverse proxy + Let's Encrypt |
 | `systemd/caddy.service` | `/etc/systemd/system/caddy.service` | Caddy systemd unit (notify type) + LogsDirectory/StateDirectory |
 | `decision-engine/systemd/rank-bidder-api.service` | `/etc/systemd/system/rank-bidder-api.service` | uvicorn API + `--proxy-headers` |
+| `decision-engine/systemd/rank-bidder-cycle-full.{service,timer}` | `/etc/systemd/system/` | full cycle (측정+결정+PUT) 5분 주기 — **자동입찰 핵심** |
+| `decision-engine/systemd/rank-bidder-cycle-hot.{service,timer}` | `/etc/systemd/system/` | hot cycle (측정만) 1분 주기 — 빠른 변화 추적 |
+| `decision-engine/systemd/rank-bidder-keep-alive.{service,timer}` | `/etc/systemd/system/` | heartbeat 5분 주기 — DB write 살아있음 + recovery 트리거 |
+| `decision-engine/systemd/rank-bidder-notify-sender.{service,timer}` | `/etc/systemd/system/` | Story 6.1 notification sender 1분 주기 (dry-run 기본) |
 | `systemd/rank-bidder-duckdns-update.{service,timer}` | `/etc/systemd/system/` | DuckDNS A record 5분 주기 갱신 (VM IP drift 대비) |
 | `duckdns-update.sh` | `/usr/local/bin/rank-bidder-duckdns-update.sh` | DuckDNS update 실행 스크립트 |
 
@@ -99,6 +103,15 @@ sudo -Hu rank-bidder /usr/local/bin/uv sync
 sudo install -m 0644 deploy/Caddyfile /etc/caddy/Caddyfile
 sudo install -m 0644 deploy/systemd/caddy.service /etc/systemd/system/
 sudo install -m 0644 decision-engine/systemd/rank-bidder-api.service /etc/systemd/system/
+# 결정 엔진 cron timer 4종 (cycle-full / cycle-hot / keep-alive / notify-sender)
+sudo install -m 0644 decision-engine/systemd/rank-bidder-cycle-full.service /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-cycle-full.timer /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-cycle-hot.service /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-cycle-hot.timer /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-keep-alive.service /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-keep-alive.timer /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-notify-sender.service /etc/systemd/system/
+sudo install -m 0644 decision-engine/systemd/rank-bidder-notify-sender.timer /etc/systemd/system/
 
 # DuckDNS updater 배치 (code-review H7)
 sudo install -m 0755 deploy/duckdns-update.sh /usr/local/bin/rank-bidder-duckdns-update.sh
@@ -127,6 +140,8 @@ sudo chown rank-bidder: /opt/rank-bidder/.env
 sudo systemctl daemon-reload
 sudo systemctl enable --now rank-bidder-duckdns-update.timer
 sudo systemctl enable --now rank-bidder-api caddy
+# cron timer 4종 enable (자동입찰 cycle은 이것들이 가동돼야 동작)
+sudo systemctl enable --now rank-bidder-cycle-full.timer rank-bidder-cycle-hot.timer rank-bidder-keep-alive.timer rank-bidder-notify-sender.timer
 ```
 
 ### 4. DuckDNS 동작 확인
