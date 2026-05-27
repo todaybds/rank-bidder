@@ -6,15 +6,55 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Rank Bidder Dashboard</title>
     <link rel="stylesheet" href="/static/css/style.css" />
+    <link rel="stylesheet" href="/static/css/policies.css" />
   </head>
   <body>
+    <div id="chat-banner" class="warning" hidden></div>
     <header>
       <h1>Rank Bidder</h1>
-      <p class="muted">Story 1.1 skeleton — 메인뷰 5요소는 Story 4.2에서 채워집니다.</p>
+      <p class="muted">메인뷰 5요소는 Story 4.2에서 채워집니다.</p>
+      <nav>
+        <a href="/system.html">시스템 통제</a> · <a href="/policies.html">정책 편집</a>
+      </nav>
+      <div class="actions" style="margin-top: 1rem;">
+        <button id="btn-import" type="button">키워드 import</button>
+      </div>
     </header>
     <main id="app">
-      <p>Loading…</p>
+      <section>
+        <h2>메인뷰</h2>
+        <p>Story 4.2 — 24h 적중률 / SERP vs 목표 / 장애 / 변동 Top 5 / 광고비 위젯 5개.</p>
+      </section>
     </main>
+
+    <dialog id="import-modal">
+      <form method="dialog">
+        <h3>키워드 일괄 등록</h3>
+        <p class="muted">Story 2.1 — Naver 캠페인 ID로 모든 KW 가져옴.</p>
+        <label>
+          site_id:
+          <input id="import-site-id" type="text" required />
+        </label>
+        <label>
+          naver_campaign_id:
+          <input id="import-campaign-id" type="text" required />
+        </label>
+        <label>
+          target_rank (1~10):
+          <input id="import-target" type="number" min="1" max="10" value="2" required />
+        </label>
+        <label>
+          bid_cap (₩):
+          <input id="import-bid-cap" type="number" min="100" max="100000" step="100" value="5000" required />
+        </label>
+        <div class="actions">
+          <button id="import-submit" type="button">등록</button>
+          <button value="cancel" type="submit">취소</button>
+        </div>
+        <p id="import-result" class="muted"></p>
+      </form>
+    </dialog>
+
     <script type="module" src="/static/js/main.js"></script>
   </body>
 </html>

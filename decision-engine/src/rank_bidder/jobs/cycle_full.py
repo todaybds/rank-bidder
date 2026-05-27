@@ -34,6 +34,7 @@ from rank_bidder.db.repositories import (
     keywords,
     measurements,
     notifications,
+    runtime_config,
 )
 from rank_bidder.engine import bid_decision, cap_race, new_cycle_id, recovery, state_machine
 from rank_bidder.engine.exceptions import FinalGuardFailedError
@@ -174,6 +175,21 @@ def _process_keyword(
         current_bid=current_bid,
         bid_cap=eff.bid_cap,
     )
+
+    # Story 4.5 — general_bid_paused True 시 일반 KW PUT skip.
+    # 측정/결정 row insert는 계속 (운영자가 "지금 paused 상태에서 무슨 결정이 났을 것인가" 추적 가능).
+    # BID_UP/BID_DOWN을 HOLD로 rewrite → 같은 PUT skip 경로 재사용.
+    if outcome.decision in ("BID_UP", "BID_DOWN"):
+        with get_connection() as conn:
+            paused = runtime_config.is_general_bid_paused(conn)
+        if paused:
+            outcome = bid_decision.DecisionOutcome(
+                decision="HOLD",
+                new_bid=outcome.old_bid,
+                old_bid=outcome.old_bid,
+                reason=f"SYSTEM_PAUSED — would have {outcome.decision} to {outcome.new_bid}",
+            )
+
     with write_transaction() as conn:
         state_machine.transition(conn, cycle_id, kw.id, "DECIDED")
         decisions.insert(

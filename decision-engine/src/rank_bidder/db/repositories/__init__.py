@@ -12,6 +12,7 @@ from rank_bidder.db.repositories import (
     measurements,
     notifications,
     policies,
+    runtime_config,
     sites,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "measurements",
     "notifications",
     "policies",
+    "runtime_config",
     "sites",
 ]

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Rank Bidder — 시스템 통제</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <link rel="stylesheet" href="/static/css/policies.css" />
+  </head>
+  <body>
+    <div id="chat-banner" class="warning" hidden></div>
+
+    <header>
+      <h1>시스템 통제</h1>
+      <p class="muted">Story 4.5 — 비상 일시정지 + 사이트 ON/OFF + 챗 상태.</p>
+      <nav>
+        <a href="/">← 대시보드</a> · <a href="/policies.html">정책 편집</a>
+      </nav>
+    </header>
+
+    <main id="app">
+      <section>
+        <h2>전체 자동입찰</h2>
+        <p>현재 상태: <strong id="pause-status">불러오는 중…</strong></p>
+        <div class="actions">
+          <button id="btn-pause" type="button" class="danger">일시정지</button>
+          <button id="btn-resume" type="button">재개</button>
+        </div>
+        <p class="muted">
+          일시정지 시 현재 사이클은 끝까지 진행, 다음 사이클부터 일반 KW의 BID_UP/BID_DOWN PUT 만 skip.
+          측정·결정 row·CAP_REACHED 알림·대시보드는 정상.
+        </p>
+      </section>
+
+      <section>
+        <h2>사이트 ON/OFF</h2>
+        <p class="muted">
+          사이트 OFF는 해당 사이트의 모든 KW를 즉시 final guard에서 차단.
+          (Story 2.3 — 2단계 confirm 필요)
+        </p>
+        <table id="site-table">
+          <thead>
+            <tr><th>site_id</th><th>name</th><th>enabled</th><th>v</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>챗 상태</h2>
+        <p>현재: <strong id="chat-status">확인 중…</strong></p>
+        <p class="muted">60초마다 자동 ping (FR-30). 5xx/timeout 시 상단 배너 표시.</p>
+      </section>
+    </main>
+
+    <script type="module" src="/static/js/system.js"></script>
+  </body>
+</html>
