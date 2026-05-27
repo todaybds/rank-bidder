@@ -1,0 +1,13 @@
+[Unit]
+Description=Rank Bidder heartbeat — every 5 minutes
+Requires=rank-bidder-keep-alive.service
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+AccuracySec=30s
+Unit=rank-bidder-keep-alive.service
+
+[Install]
+WantedBy=timers.target

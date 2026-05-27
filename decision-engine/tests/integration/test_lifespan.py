@@ -16,7 +16,10 @@ def test_lifespan_skips_in_non_prod_without_db_path(monkeypatch: pytest.MonkeyPa
     with TestClient(app) as client:
         response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"ok": True}
+    # Story 1.9: DB 미설정 시 heartbeat insert 실패 → heartbeat_id=None 안전 반환
+    body = response.json()
+    assert body["ok"] is True
+    assert body.get("heartbeat_id") is None
 
 
 def test_lifespan_raises_in_prod_without_db_path(monkeypatch: pytest.MonkeyPatch) -> None:

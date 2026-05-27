@@ -48,8 +48,8 @@ def test_up_is_idempotent(temp_db: Path) -> None:
     applied = up(DEFAULT_MIGRATIONS_DIR)
     assert applied == 0
     with get_connection() as conn:
-        # Story 1.6 추가 후 latest=2
-        assert current_version(conn) == 2
+        # Story 1.9 추가 후 latest=3
+        assert current_version(conn) == 3
 
 
 def test_discover_migrations_rejects_non_sequential(tmp_path: Path) -> None:
@@ -69,11 +69,28 @@ def test_discover_migrations_rejects_duplicate(tmp_path: Path) -> None:
 
 
 def test_up_on_empty_db_returns_all_pending(empty_db: Path) -> None:
-    """AC1 (Story 1.6 update): 0 → latest 적용 시 카운트 = 전체 migration 수."""
+    """AC1: 0 → latest 적용 시 카운트 = 전체 migration 수."""
     configure(empty_db)
     applied = up(DEFAULT_MIGRATIONS_DIR)
-    # 0001 + 0002 = 2 (Story 1.6 시점)
-    assert applied == 2
+    # 0001 + 0002 + 0003 (Story 1.9 시점)
+    assert applied == 3
+
+
+def test_0003_creates_heartbeats_table(temp_db: Path) -> None:
+    """Story 1.9: heartbeats 테이블 + 인덱스."""
+    with get_connection() as conn:
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        indexes = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_heart%'"
+            )
+        }
+    assert "heartbeats" in tables
+    assert "idx_heartbeats_inserted_at" in indexes
 
 
 def test_0002_creates_cycle_entries_measurements_decisions(temp_db: Path) -> None:

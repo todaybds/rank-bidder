@@ -1,0 +1,18 @@
+[Unit]
+Description=Rank Bidder Decision Engine FastAPI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rank-bidder
+WorkingDirectory=/opt/rank-bidder/decision-engine
+EnvironmentFile=/opt/rank-bidder/.env
+ExecStart=/opt/rank-bidder/.venv/bin/uvicorn rank_bidder.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -55,9 +55,20 @@ app = FastAPI(
 
 
 @app.get("/health")
-def health() -> dict[str, bool]:
-    """Health probe. Story 1.9에서 DB heartbeat insert로 강화."""
-    return {"ok": True}
+def health() -> dict[str, object]:
+    """Health probe — Story 1.9에서 DB heartbeat row insert로 강화 (D26 채널 5).
+
+    /health 호출 시 heartbeats 테이블에 1행 insert + 200 응답.
+    DB connection 실패 시 200 + heartbeat_id=None (probe 자체는 살아있음 표시).
+    """
+    try:
+        from rank_bidder.jobs.keep_alive import insert_heartbeat
+
+        row_id = insert_heartbeat(source="health")
+        return {"ok": True, "heartbeat_id": row_id}
+    except Exception as exc:  # noqa: BLE001 — probe는 결코 5xx 안 됨
+        log.warning("health.heartbeat_failed", error=str(exc))
+        return {"ok": True, "heartbeat_id": None, "warning": str(exc)}
 
 
 def main() -> None:

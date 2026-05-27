@@ -1,0 +1,12 @@
+[Unit]
+Description=Rank Bidder keep-alive heartbeat
+After=rank-bidder-api.service
+
+[Service]
+Type=oneshot
+User=rank-bidder
+WorkingDirectory=/opt/rank-bidder/decision-engine
+EnvironmentFile=/opt/rank-bidder/.env
+ExecStart=/opt/rank-bidder/.venv/bin/python -m rank_bidder.jobs.keep_alive
+StandardOutput=journal
+StandardError=journal

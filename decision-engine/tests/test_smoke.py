@@ -22,4 +22,7 @@ def test_health_endpoint() -> None:
     client = TestClient(app)
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"ok": True}
+    # Story 1.9: heartbeat_id 키 추가 (DB 미설정 시 None)
+    body = response.json()
+    assert body["ok"] is True
+    assert "heartbeat_id" in body

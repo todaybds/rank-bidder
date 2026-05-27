@@ -1,0 +1,13 @@
+[Unit]
+Description=Rank Bidder full cycle — every 5 minutes
+Requires=rank-bidder-cycle-full.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+AccuracySec=10s
+Unit=rank-bidder-cycle-full.service
+
+[Install]
+WantedBy=timers.target
