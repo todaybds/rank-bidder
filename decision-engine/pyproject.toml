@@ -38,3 +38,9 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "rank_bidder"
 module-root = "src"
+
+[tool.pytest.ini_options]
+markers = [
+    "naver_live: 실제 Naver SA API 호출 — 운영 광고그룹 영향 + 광고비 발생. RANKBIDDER_NAVER_SA_* env 필수. 기본 pytest에서 SKIP.",
+    "slow: 1000회 반복 측정 등 시간 오래 걸리는 테스트. 기본 pytest에서 SKIP.",
+]
