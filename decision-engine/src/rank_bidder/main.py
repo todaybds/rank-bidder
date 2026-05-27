@@ -56,7 +56,15 @@ app = FastAPI(
 # Story 2.1 — keyword bulk import router
 from rank_bidder.api.imports import router as imports_router  # noqa: E402
 
+# Story 2.2 — keyword toggle router
+from rank_bidder.api.keywords import router as keywords_router  # noqa: E402
+
+# Story 2.3 — site toggle router
+from rank_bidder.api.sites import router as sites_router  # noqa: E402
+
 app.include_router(imports_router)
+app.include_router(keywords_router)
+app.include_router(sites_router)
 
 
 @app.get("/health")

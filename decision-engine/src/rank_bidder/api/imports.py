@@ -89,6 +89,7 @@ def import_campaign_keywords(req: ImportRequest) -> ImportResponse:
                         term=term,
                         target_rank=req.target_rank,
                         bid_cap=effective_cap,
+                        adgroup_id=kw.get("nccAdgroupId"),
                     ),
                 )
                 imported += 1

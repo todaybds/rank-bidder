@@ -23,14 +23,21 @@ from rank_bidder.db.connection import get_connection, write_transaction
 from rank_bidder.db.models import (
     CycleEntryCreate,
     DecisionCreate,
+    KeywordUpdate,
     MeasurementCreate,
 )
-from rank_bidder.db.repositories import cycle_entries, decisions, keywords, measurements
+from rank_bidder.db.repositories import (
+    cycle_entries,
+    decisions,
+    keywords,
+    measurements,
+    notifications,
+)
 from rank_bidder.engine import bid_decision, new_cycle_id, recovery, state_machine
 from rank_bidder.engine.exceptions import FinalGuardFailedError
 from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
 from rank_bidder.naver_sa.bid import put_bid as sa_put_bid
-from rank_bidder.naver_sa.exceptions import NaverSAError
+from rank_bidder.naver_sa.exceptions import NaverKeywordDeleted, NaverSAError
 
 log = structlog.get_logger(__name__)
 
@@ -81,12 +88,24 @@ def run_cycle(samples_n: int = 3) -> dict[str, int]:
         results_by_id = {r["id"]: r for r in results}
 
         # 4+5+6. per-KW: MEASURED → DECIDED → PUT_SENT → COMMITTED
+        deleted_kw_ids: list[str] = []  # Story 2.4 묶음 알림용
         for kw in enabled_kws:
             try:
-                _process_keyword(cycle_id, kw, results_by_id.get(kw.id), summary)
+                _process_keyword(cycle_id, kw, results_by_id.get(kw.id), summary, deleted_kw_ids)
             except Exception as exc:  # noqa: BLE001 — KW 단위 격리 (D15 a)
                 log.error("cycle_full.kw_error", keyword_id=kw.id, error=str(exc))
                 summary["failed"] += 1
+
+        # Story 2.4: 같은 사이클에 404 발생 KW 여러 개 → 1 알림 row 묶음.
+        if deleted_kw_ids:
+            with write_transaction() as conn:
+                notifications.insert(
+                    conn,
+                    event_type="naver_keyword_deleted",
+                    related_ids=deleted_kw_ids,
+                    payload={"cycle_id": cycle_id, "count": len(deleted_kw_ids)},
+                )
+            log.info("cycle_full.naver_deleted_batch", count=len(deleted_kw_ids))
 
         log.info("cycle_full.completed", **summary)
         return summary
@@ -94,8 +113,17 @@ def run_cycle(samples_n: int = 3) -> dict[str, int]:
         clear_contextvars()
 
 
-def _process_keyword(cycle_id: str, kw, result: dict | None, summary: dict[str, int]) -> None:
-    """단일 KW 처리 — MEASURED → DECIDED → PUT_SENT → COMMITTED 흐름."""
+def _process_keyword(
+    cycle_id: str,
+    kw,
+    result: dict | None,
+    summary: dict[str, int],
+    deleted_kw_ids: list[str] | None = None,
+) -> None:
+    """단일 KW 처리 — MEASURED → DECIDED → PUT_SENT → COMMITTED 흐름.
+
+    Story 2.4: NaverKeywordDeleted(404) catch → keywords.enabled=False + deleted_kw_ids 추가.
+    """
     if result is None:
         with write_transaction() as conn:
             state_machine.transition(conn, cycle_id, kw.id, "FAILED")
@@ -161,17 +189,27 @@ def _process_keyword(cycle_id: str, kw, result: dict | None, summary: dict[str, 
         summary["skipped"] += 1
         return
 
-    # Naver PUT
+    # Naver PUT — Story 2.3: keywords.adgroup_id 컬럼 사용 (env 우회 폐기).
+    # Story 2.1 import 시점에 nccAdgroupId 같이 저장 → cycle_full 호출 시 그대로 사용.
     try:
-        # adgroup_id는 v1 단순 — kw.site_id를 그대로 못 쓰니 별도 메타 필요.
-        # 임시: keywords 테이블에 adgroup_id 컬럼은 v2. v1은 외부 매핑 또는 env.
-        # 본 story는 PUT 호출 시점 placeholder — Story 2.3 site/campaign 매핑이 정식.
-        import os as _os
-
-        adgroup_id = _os.environ.get(f"RANKBIDDER_KW_{kw.id}_ADGROUP_ID")
-        if not adgroup_id:
-            raise NaverSAError(f"adgroup_id env not set for KW {kw.id}")
-        sa_put_bid(kw.id, outcome.new_bid, adgroup_id=adgroup_id)
+        if not kw.adgroup_id:
+            raise NaverSAError(f"adgroup_id not set for KW {kw.id} — re-import required")
+        sa_put_bid(kw.id, outcome.new_bid, adgroup_id=kw.adgroup_id)
+    except NaverKeywordDeleted:
+        # Story 2.4 D15 (n): KW 자동 OFF + reason=NAVER_DELETED + 묶음 알림 후보 추가.
+        log.warning("cycle_full.naver_deleted", keyword_id=kw.id)
+        with write_transaction() as conn:
+            try:
+                keywords.update(
+                    conn, kw.id, KeywordUpdate(enabled=False), expected_version=kw.version
+                )
+            except Exception as eUp:  # noqa: BLE001
+                log.warning("cycle_full.disable_failed", keyword_id=kw.id, error=str(eUp))
+            state_machine.transition(conn, cycle_id, kw.id, "FAILED")
+        if deleted_kw_ids is not None:
+            deleted_kw_ids.append(kw.id)
+        summary["failed"] += 1
+        return
     except (NaverSAError, RuntimeError) as exc:
         log.warning("cycle_full.put_failed", keyword_id=kw.id, error=str(exc))
         with write_transaction() as conn:

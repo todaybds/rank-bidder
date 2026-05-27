@@ -18,10 +18,10 @@ def create(conn: sqlite3.Connection, payload: KeywordCreate) -> Keyword:
     conn.execute(
         f"""
         INSERT INTO {TABLE} (
-            id, site_id, term, target_rank, bid_cap, enabled,
+            id, site_id, term, target_rank, bid_cap, enabled, adgroup_id,
             version, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))
         """,
         (
             payload.id,
@@ -30,6 +30,7 @@ def create(conn: sqlite3.Connection, payload: KeywordCreate) -> Keyword:
             payload.target_rank,
             payload.bid_cap,
             int(payload.enabled),
+            payload.adgroup_id,
         ),
     )
     return _require_row(conn, payload.id)

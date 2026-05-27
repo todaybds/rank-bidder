@@ -5,11 +5,21 @@
 """
 
 from rank_bidder.db.repositories import (
+    campaigns,
     cycle_entries,
     decisions,
     keywords,
     measurements,
+    notifications,
     sites,
 )
 
-__all__ = ["cycle_entries", "decisions", "keywords", "measurements", "sites"]
+__all__ = [
+    "campaigns",
+    "cycle_entries",
+    "decisions",
+    "keywords",
+    "measurements",
+    "notifications",
+    "sites",
+]

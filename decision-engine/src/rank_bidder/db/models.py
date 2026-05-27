@@ -119,6 +119,7 @@ class KeywordBase(BaseModel):
 class KeywordCreate(KeywordBase):
     id: str = Field(min_length=1, max_length=64)
     site_id: str = Field(min_length=1, max_length=64)
+    adgroup_id: str | None = Field(default=None, max_length=64)
 
 
 class KeywordUpdate(BaseModel):
@@ -138,6 +139,7 @@ class KeywordUpdate(BaseModel):
 class Keyword(KeywordBase):
     id: str
     site_id: str
+    adgroup_id: str | None = None
     version: int = Field(ge=0)
     created_at: datetime
     updated_at: datetime
