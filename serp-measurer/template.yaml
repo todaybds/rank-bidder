@@ -27,8 +27,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: rank-bidder-serp-measurer
-      CodeUri: src/measurer/
-      Handler: handler.lambda_handler
+      CodeUri: src/
+      Handler: measurer.handler.lambda_handler
       Environment:
         Variables:
           AUTH_TOKEN_PARAMETER_NAME: !Sub "/${AuthTokenParameterName}"
