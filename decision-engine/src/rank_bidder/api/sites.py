@@ -1,19 +1,70 @@
-"""POST /api/v1/sites/{id}/toggle (Story 2.3) — confirm 2단계."""
+"""POST /api/v1/sites (deploy seed) + POST /api/v1/sites/{id}/toggle (Story 2.3) + GET list."""
 
 from __future__ import annotations
+
+import sqlite3
 
 import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from rank_bidder.db.connection import get_connection, write_transaction
-from rank_bidder.db.models import SiteUpdate
+from rank_bidder.db.models import SiteCreate, SiteUpdate
 from rank_bidder.db.repositories import campaigns as campaigns_repo
 from rank_bidder.db.repositories import sites as sites_repo
 from rank_bidder.db.version import VersionConflictError
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/sites", tags=["sites"])
+
+
+class SiteCreateRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=200)
+    enabled: bool = True
+
+
+@router.get("")
+def list_sites() -> dict:
+    """deploy 시점 사이트 시드 확인 + dashboard system.html용 list."""
+    with get_connection() as conn:
+        rows = sites_repo.list_sites(conn)
+    items = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "enabled": s.enabled,
+            "version": s.version,
+            "created_at": s.created_at.isoformat().replace("+00:00", "Z"),
+        }
+        for s in rows
+    ]
+    return {"items": items, "count": len(items)}
+
+
+@router.post("")
+def create_site(req: SiteCreateRequest) -> dict:
+    """신규 사이트 등록 — deploy seed 용. 중복 id면 409."""
+    try:
+        with write_transaction() as conn:
+            site = sites_repo.create(
+                conn,
+                SiteCreate(id=req.id, name=req.name, enabled=req.enabled),
+            )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": {"code": "SITE_ALREADY_EXISTS", "site_id": req.id}},
+        ) from exc
+
+    log.info("sites.created", site_id=site.id, name=site.name, enabled=site.enabled)
+    return {
+        "id": site.id,
+        "name": site.name,
+        "enabled": site.enabled,
+        "version": site.version,
+        "created_at": site.created_at.isoformat().replace("+00:00", "Z"),
+    }
 
 
 class SiteToggleRequest(BaseModel):
