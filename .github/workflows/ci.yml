@@ -51,7 +51,10 @@ jobs:
 
   sam-build:
     name: SAM build validate
-    runs-on: ubuntu-latest
+    # Lambda Architectures: arm64 — use native arm64 runner (free for public repos)
+    # to avoid QEMU emulation cost of `--use-container` on x86. Native python3.13
+    # on arm64 host = same architecture as Lambda runtime → parity preserved.
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,4 +75,4 @@ jobs:
 
       - name: SAM build
         working-directory: serp-measurer
-        run: sam build --use-container
+        run: sam build
