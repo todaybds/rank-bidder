@@ -53,6 +53,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Story 2.1 — keyword bulk import router
+from rank_bidder.api.imports import router as imports_router  # noqa: E402
+
+app.include_router(imports_router)
+
 
 @app.get("/health")
 def health() -> dict[str, object]:
