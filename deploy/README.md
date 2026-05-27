@@ -196,22 +196,30 @@ curl -X POST "$BASE/api/v1/imports" \
 ## 검증
 
 ```bash
-# Caddy → uvicorn 통과 확인 (Bearer 없이 401)
-curl -i https://rank-bidder.duckdns.org/api/v1/keywords
-
 # /health probe — Bearer bypass
 curl -i https://rank-bidder.duckdns.org/health
 # → 200 {"ok": true, "heartbeat_id": <int>}
 
-# 정상 인증
-curl -i -H "Authorization: Bearer $RANKBIDDER_AUTH_TOKEN" \
-  https://rank-bidder.duckdns.org/api/v1/keywords
-# → 200
+# Caddy → uvicorn 통과 + Bearer 미들웨어 동작 확인 (auth-required 라우트, Bearer 없이 401)
+curl -i https://rank-bidder.duckdns.org/api/v1/sites
+# → 401 {"error":{"code":"UNAUTHORIZED",...}}
 
-# robots noindex
-curl https://rank-bidder.duckdns.org/robots.txt
-# → Disallow: /
+# 정상 인증 (사이트 목록 — 비어있으면 [])
+curl -i -H "Authorization: Bearer $RANKBIDDER_AUTH_TOKEN" \
+  https://rank-bidder.duckdns.org/api/v1/sites
+# → 200 []
+
+# 등록된 라우트 전체 확인 — Swagger UI (브라우저 또는 curl)
+# https://rank-bidder.duckdns.org/docs
+
+# TLS 발급자 확인 (Let's Encrypt)
+echo | openssl s_client -servername rank-bidder.duckdns.org \
+  -connect rank-bidder.duckdns.org:443 2>/dev/null \
+  | openssl x509 -noout -issuer -dates
+# → issuer=C = US, O = Let's Encrypt, CN = E8
 ```
+
+> 참고: `GET /api/v1/keywords` 와 `/robots.txt`는 현재 미등록 라우트 — Epic 4.2 (dashboard 메인) backlog에서 추가 예정. 검증 시 404 나면 정상.
 
 ## 트러블슈팅
 
