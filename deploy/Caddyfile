@@ -1,0 +1,34 @@
+# Caddyfile — Story 4.1 (FR-25, D7·D8·D29)
+#
+# rank-bidder.duckdns.org → uvicorn 127.0.0.1:8000 reverse proxy.
+# Let's Encrypt 자동 인증서 (TLS 자동). Bearer 토큰 검증은 uvicorn 측 미들웨어가 처리
+# (Caddy는 통과만 — Bearer 헤더 통째 forward).
+#
+# 적용 전 외부 셋업:
+#   1. DuckDNS A record: rank-bidder.duckdns.org → Oracle VM public IPv4.
+#   2. 80/443 ingress: Oracle Cloud Security List + iptables OPEN.
+#   3. systemd: `sudo systemctl enable --now caddy rank-bidder-api`.
+#   4. `RANKBIDDER_AUTH_TOKEN` env: SSM Parameter Store + /opt/rank-bidder/.env 동기화.
+
+rank-bidder.duckdns.org {
+    encode gzip zstd
+
+    log {
+        output file /var/log/caddy/rank-bidder.log {
+            roll_size 10mb
+            roll_keep 7
+        }
+        format json
+    }
+
+    # health probe — Caddy 자체 health (Bearer 미요구, uvicorn /health 통과)
+    handle /caddy-up {
+        respond "ok" 200
+    }
+
+    # 모든 트래픽 reverse proxy. Bearer 검증은 uvicorn auth.bearer 미들웨어.
+    reverse_proxy 127.0.0.1:8000 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Host {host}
+    }
+}

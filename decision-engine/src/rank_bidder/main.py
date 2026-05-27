@@ -53,6 +53,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Story 4.1 — Bearer middleware (env-gated, /health bypass)
+from rank_bidder.auth.bearer import install as install_bearer  # noqa: E402
+
+install_bearer(app)
+
 # Story 2.1 — keyword bulk import router
 from rank_bidder.api.imports import router as imports_router  # noqa: E402
 
