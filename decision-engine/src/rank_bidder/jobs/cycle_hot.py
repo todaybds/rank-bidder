@@ -70,4 +70,8 @@ if __name__ == "__main__":
 
     summary = run_hot_cycle()
     print(f"cycle_hot summary: {summary}")
-    sys.exit(0 if summary["failed"] < summary["scanned"] else 1)
+    # Exit 1 only when there was work AND all of it failed. scanned==0 (KW seed 전
+    # 또는 모두 disabled) 은 "할 일 없음" 이지 failure 아님 — exit 0. 기존 식
+    # `failed < scanned` 는 scanned=0 일 때 `0 < 0 = False` 로 잘못 exit 1 됨
+    # (2026-05-28 GCP deploy 실측에서 매분 FAILURE 로그 박힘 확인).
+    sys.exit(1 if summary["scanned"] > 0 and summary["failed"] >= summary["scanned"] else 0)
