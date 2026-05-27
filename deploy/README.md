@@ -86,11 +86,14 @@ sudo git clone https://github.com/todaybds/rank-bidder.git /opt/rank-bidder
 sudo chown -R rank-bidder: /opt/rank-bidder
 
 # Python 3.13 + venv (Ubuntu 22.04 기본은 3.10 → uv가 3.13 다운로드/캐시)
-cd /opt/rank-bidder/decision-engine
-sudo -u rank-bidder /usr/local/bin/uv python install 3.13
-sudo -u rank-bidder /usr/local/bin/uv venv .venv --python 3.13
-sudo -u rank-bidder /usr/local/bin/uv sync
-# venv 경로 = /opt/rank-bidder/decision-engine/.venv  ← systemd unit과 일치 확인 (code-review H4)
+# 주의: -H 플래그로 HOME을 rank-bidder 거(/opt/rank-bidder)로 강제. -H 없으면
+# uv가 호출 유저(/home/<caller>)의 uv.toml 읽으려다 권한 거부로 실패.
+cd /opt/rank-bidder
+sudo -Hu rank-bidder /usr/local/bin/uv python install 3.13
+sudo -Hu rank-bidder /usr/local/bin/uv sync
+# venv 경로 = /opt/rank-bidder/.venv  ← uv workspace 루트 (systemd unit과 일치).
+# 루트 pyproject.toml의 [tool.uv.workspace]가 decision-engine + serp-measurer를 묶어
+# 단일 venv를 워크스페이스 루트에 만듦. `uv venv` 별도 호출 불필요 — `uv sync`가 알아서 만듦.
 
 # systemd unit 배치
 sudo install -m 0644 deploy/Caddyfile /etc/caddy/Caddyfile
@@ -213,7 +216,7 @@ curl https://rank-bidder.duckdns.org/robots.txt
 ## 트러블슈팅
 
 - **401 with valid token**: `.env`의 토큰과 curl `-H Bearer` 값 정확 일치 확인. 공백·줄바꿈 주의.
-- **uvicorn ENOENT/실패**: venv 경로 = `/opt/rank-bidder/decision-engine/.venv/bin/uvicorn`. `sudo -u rank-bidder /usr/local/bin/uv sync` 다시 실행.
+- **uvicorn ENOENT/실패**: venv 경로 = `/opt/rank-bidder/.venv/bin/uvicorn` (uv workspace 루트). `sudo -Hu rank-bidder /usr/local/bin/uv sync` 다시 실행. **주의**: `sudo -u`만 쓰면 HOME이 호출 유저 거 그대로라 uv가 `/home/<caller>/uv.toml` 권한 에러로 실패 — `-H` 필수.
 - **uv: command not found**: `UV_INSTALL_DIR=/usr/local/bin` 안 먹었을 가능성. `which uv` → 없으면 `curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin sh` 재실행.
 - **Let's Encrypt 실패**: DuckDNS DNS propagation 대기 (~5 min). `sudo journalctl -u caddy -f`. systemd unit이 LogsDirectory/StateDirectory 사용 — `/var/lib/caddy` ACME state 존재 확인.
 - **Caddy: address already in use (80/443)**: apt 기본 caddy.service가 살아있을 가능성. `sudo systemctl status caddy` 확인 + `sudo systemctl disable --now caddy` 후 재시작.
