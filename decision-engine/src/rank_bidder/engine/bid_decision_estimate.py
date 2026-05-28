@@ -114,9 +114,19 @@ def decide_by_estimate(
                 reason=f"CAP_REACHED at {effective_cap} (estimate {estimate_bid} > current)",
             )
         candidate = round_100(current_bid * (1 + step_pct))
+        # 2026-05-28 BID_UP_NOOP fix: 5% 인상이 round_100 결과 current와 같으면
+        # 강제 +100원 (NAVER_BID_UNIT). 100원/200원 같은 작은 bid가 매 cycle 헛돌던
+        # silent bug 차단. 사용자가 본 "왜 일부만 작동" 문제의 root cause.
+        if candidate <= current_bid:
+            candidate = current_bid + NAVER_BID_UNIT
         # estimate 자체를 초과하지 않게 cap
         if candidate > estimate_bid:
             candidate = round_100(estimate_bid)
+            # estimate가 너무 낮아서 round_100(estimate) <= current면 다시 NOOP 위험.
+            # 이 경우 candidate를 current+100으로 강제 (estimate가 권고이긴 하나
+            # 실 의도는 "조금이라도 올리기"이므로 minimum step 보장).
+            if candidate <= current_bid:
+                candidate = current_bid + NAVER_BID_UNIT
         if candidate >= effective_cap:
             return DecisionOutcome(
                 decision="BID_UP",

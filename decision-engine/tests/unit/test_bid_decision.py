@@ -28,10 +28,10 @@ def test_hold_when_rank_equals_target() -> None:
 def test_bid_up_normal() -> None:
     r = decide(current_rank=5, target_rank=2, current_bid=1000, bid_cap=5000)
     assert r.decision == "BID_UP"
-    # 1000 * 1.05 = 1050 → round_100 = 1000? 1050//100*100 = 1000.
-    # 그러나 floor 결과가 같으면 effectively HOLD인데, decision은 BID_UP 그대로.
-    # 의미: step 5%가 너무 작아 다음 사이클에 누적 진행.
-    assert r.new_bid == 1000
+    # 2026-05-28 BID_UP_NOOP fix: 1000*1.05=1050 → round_100=1000 → NOOP → +100원 강제.
+    # 사용자 발견 ("일부만 작동"): 100원/1000원 같은 작은 bid가 매 cycle 헛돌던 silent bug.
+    # 이제 최소 NAVER_BID_UNIT(100원)씩 인상 보장.
+    assert r.new_bid == 1100
 
 
 def test_bid_up_with_visible_increase() -> None:

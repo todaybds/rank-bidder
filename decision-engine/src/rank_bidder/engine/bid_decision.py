@@ -104,6 +104,10 @@ def decide(
                 reason=f"CAP_REACHED at {effective_cap} (rank {current_rank} > target {target_rank})",
             )
         candidate = round_100(current_bid * (1 + step_pct))
+        # 2026-05-28 BID_UP_NOOP fix: 작은 bid의 5% 인상이 round_100으로 current와 동일하면
+        # 강제 +100원 (NAVER_BID_UNIT). silent stuck 차단.
+        if candidate <= current_bid:
+            candidate = current_bid + NAVER_BID_UNIT
         if candidate >= effective_cap:
             # CRITICAL C4 fix: reason은 실제 effective_cap 표시 (이전엔 bid_cap 원본 입력만 표시 →
             # 5050 같은 non-100-multiple 입력 시 실제 송신 5000과 reason 5050 불일치).
