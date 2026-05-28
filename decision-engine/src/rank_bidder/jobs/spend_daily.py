@@ -17,7 +17,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import structlog
 
 from rank_bidder.db.connection import get_connection, write_transaction
-from rank_bidder.db.repositories import keywords, notifications, spend_daily
+from rank_bidder.db.repositories import notifications, spend_daily
 from rank_bidder.naver_sa.exceptions import NaverSAError
 from rank_bidder.naver_sa.stats import fetch_yesterday_summary
 

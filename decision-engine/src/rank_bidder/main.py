@@ -85,15 +85,15 @@ from rank_bidder.api.imports import router as imports_router  # noqa: E402
 # Story 2.2 — keyword toggle router
 from rank_bidder.api.keywords import router as keywords_router  # noqa: E402
 
+# Story 4.2 — dashboard 5위젯 metrics router
+from rank_bidder.api.metrics import router as metrics_router  # noqa: E402
+
 # Story 3.3 — policies CRUD router
 from rank_bidder.api.policies import router as policies_router  # noqa: E402
 
 # Story 2.3 — site toggle router
 from rank_bidder.api.sites import router as sites_router  # noqa: E402
 from rank_bidder.api.system import router as system_router  # noqa: E402
-
-# Story 4.2 — dashboard 5위젯 metrics router
-from rank_bidder.api.metrics import router as metrics_router  # noqa: E402
 
 app.include_router(imports_router)
 app.include_router(keywords_router)

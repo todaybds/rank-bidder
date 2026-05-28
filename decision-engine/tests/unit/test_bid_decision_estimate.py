@@ -5,7 +5,6 @@ Naver estimate API 기반 결정 함수 — Naver IP 차단 대응 path.
 
 from __future__ import annotations
 
-import pytest
 from rank_bidder.engine.bid_decision_estimate import decide_by_estimate
 
 

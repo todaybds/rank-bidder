@@ -113,10 +113,9 @@ def _extract_bid(body: Any) -> int | None:
         return None
 
     # Naver 응답 wrapper 안 명시적 error 신호 차단 (HTTP 200 wrapper bug 방어).
-    if "name" in body and "status" in body and isinstance(body.get("status"), int):
-        # 예: {"name": "MethodNotAllowed", "status": 405, ...} — error response
-        if body["status"] >= 400:
-            return None
+    # 예: {"name": "MethodNotAllowed", "status": 405, ...} — error response
+    if "name" in body and isinstance(body.get("status"), int) and body["status"] >= 400:
+        return None
 
     for key in ("estimate", "keywordEstimatedBid", "keywordEstimate"):
         rows = body.get(key)

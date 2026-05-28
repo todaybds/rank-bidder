@@ -31,7 +31,7 @@ def upsert(
     impression_count: int = 0,
 ) -> SpendDaily:
     """upsert by (date, site_id, campaign_id) — daily collector 재실행 안전."""
-    cursor = conn.execute(
+    conn.execute(
         f"""
         INSERT INTO {TABLE} (date, site_id, campaign_id, spend_amount, click_count, impression_count)
         VALUES (?, ?, ?, ?, ?, ?)

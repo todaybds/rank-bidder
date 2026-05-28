@@ -23,8 +23,8 @@ from __future__ import annotations
 
 from rank_bidder.engine.bid_decision import (
     DEFAULT_STEP_PCT,
-    DecisionOutcome,
     NAVER_BID_UNIT,
+    DecisionOutcome,
     round_100,
 )
 
