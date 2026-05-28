@@ -102,37 +102,52 @@ def _normalize_stat(d: dict[str, Any]) -> dict[str, Any] | None:
     return out if out else None
 
 
+#: 2026-05-28 박제 — avgRnk가 통계적으로 의미 있으려면 최소 노출 수.
+#: impCnt < 이 값이면 avgRnk가 우연/단편 표본이라 신뢰 안 함 (100원 KW가 한밤중
+#: 잠깐 노출 시 운 좋게 1~2위 박혀서 avgRnk=2 같은 통계 왜곡 차단).
+MIN_IMPRESSIONS_FOR_RANK = 30
+
+
 def fetch_today_avg_rank(
     naver_id: str,
     *,
     client: httpx.Client | None = None,
-) -> float | None:
-    """2026-05-28 — 오늘 평균 순위 (avgRnk, Double) 즉시 조회.
+) -> tuple[float | None, int]:
+    """2026-05-28 — 오늘 평균 순위 (avgRnk) + 노출수 (impCnt) 동시 조회.
 
-    Naver 공식 API라 SERP 차단 무관. cycle_full_estimate가 매 cycle 호출해서
-    measurement insert에 활용 (rank_final = round(avgRnk)).
+    Naver 공식 API라 SERP 차단 무관. cycle_full_estimate가 매 cycle 호출.
+
+    **노출수 검증 (silent stat 왜곡 차단)**:
+    - impCnt < ``MIN_IMPRESSIONS_FOR_RANK`` (30회) → avgRnk 신뢰 안 함, None 반환.
+      100원 KW가 우연히 한두 번 노출돼서 avgRnk=2 박는 silent 왜곡 차단.
+    - impCnt >= 30 + avgRnk > 0 → float 반환.
 
     Args:
         naver_id: nccKeywordId / nccAdgroupId.
         client: 테스트용.
 
     Returns:
-        ``float`` (예: 1.7) 또는 ``None`` (데이터 없음 / 응답 파싱 실패).
+        ``(avg_rank, impressions)`` — 노출 부족 시 ``(None, impCnt)``.
+        대시보드는 None이면 "노출부족" 표시, 값 있으면 정수 round.
     """
     if not naver_id or not isinstance(naver_id, str):
         raise ValueError(f"naver_id must be a non-empty string, got {naver_id!r}")
     params = {
         "id": naver_id,
-        "fields": json.dumps(["avgRnk"]),
+        "fields": json.dumps(["avgRnk", "impCnt"]),
         "timeIncrement": "summary",
         "datePreset": "today",
     }
     _, body = call_with_retry("GET", "/stats", params=params, client=client)
     stat = _extract_summary(body)
     if stat is None:
-        return None
+        return None, 0
     avg = stat.get("avgRnk")
+    imp = int(stat.get("impCnt", 0) or 0)
+    # avgRnk=0 또는 None = Naver 데이터 없음 (노출 0)
     if avg is None or avg == 0:
-        # avgRnk=0 = Naver 데이터 없음 (오늘 노출 0 또는 통계 미집계)
-        return None
-    return float(avg)
+        return None, imp
+    # 노출수 부족 → 통계 왜곡 가능, 신뢰 안 함
+    if imp < MIN_IMPRESSIONS_FOR_RANK:
+        return None, imp
+    return float(avg), imp

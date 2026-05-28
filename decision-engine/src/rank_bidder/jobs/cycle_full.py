@@ -354,14 +354,15 @@ def _process_keyword_estimate(
         last_dec = decisions.list_for_keyword(conn, kw.id, limit=1)
     current_bid = last_dec[0].new_bid if last_dec else max(kw.bid_cap // 2, 100)
 
-    # 2026-05-28: Naver stats API로 오늘 평균 순위 (avgRnk) 측정.
-    # SERP 차단 무관(공식 API). measurement insert 박제로 대시보드 "현재 순위" 채워짐.
+    # 2026-05-28: Naver stats API로 오늘 평균 순위 (avgRnk + impCnt) 측정.
+    # SERP 차단 무관(공식 API). impCnt < 30이면 통계 왜곡 차단(None).
     # 실패해도 결정 path는 계속 진행 (best-effort).
     try:
-        today_avg_rank = fetch_today_avg_rank(kw.id)
+        today_avg_rank, today_imp = fetch_today_avg_rank(kw.id)
     except Exception as exc:  # noqa: BLE001 — best-effort
         log.warning("cycle_estimate.stats_failed", keyword_id=kw.id, error=str(exc))
         today_avg_rank = None
+        today_imp = 0
 
     if today_avg_rank is not None:
         rank_int = round(today_avg_rank)
@@ -380,6 +381,14 @@ def _process_keyword_estimate(
             keyword_id=kw.id,
             avg_rank=today_avg_rank,
             rank_int=rank_int,
+            impressions=today_imp,
+        )
+    else:
+        log.info(
+            "cycle_estimate.rank_not_measured",
+            keyword_id=kw.id,
+            impressions=today_imp,
+            reason="impressions < 30" if today_imp > 0 else "no_data",
         )
 
     # estimate API 호출 (Naver Public API, 차단 무관, 광고비 0)
