@@ -12,7 +12,10 @@
     <div id="chat-banner" class="warning" hidden></div>
     <header>
       <h1>Rank Bidder</h1>
-      <p class="muted">메인뷰 5요소는 Story 4.2에서 채워집니다.</p>
+      <p class="muted">
+        업데이트: <span id="generated-at">—</span>
+        <button id="btn-refresh" type="button" class="link-button">즉시 새로고침</button>
+      </p>
       <nav>
         <a href="/system.html">시스템 통제</a> · <a href="/policies.html">정책 편집</a>
       </nav>
@@ -20,10 +23,26 @@
         <button id="btn-import" type="button">키워드 import</button>
       </div>
     </header>
-    <main id="app">
-      <section>
-        <h2>메인뷰</h2>
-        <p>Story 4.2 — 24h 적중률 / SERP vs 목표 / 장애 / 변동 Top 5 / 광고비 위젯 5개.</p>
+    <main id="app" class="dashboard-grid">
+      <section class="widget" id="widget-hit-rate">
+        <h2>24h 적중률</h2>
+        <div class="widget-body"><p class="muted">로딩 중…</p></div>
+      </section>
+      <section class="widget" id="widget-serp">
+        <h2>현재 SERP vs 목표</h2>
+        <div class="widget-body"><p class="muted">로딩 중…</p></div>
+      </section>
+      <section class="widget" id="widget-failures">
+        <h2>시스템 장애 (24h)</h2>
+        <div class="widget-body"><p class="muted">로딩 중…</p></div>
+      </section>
+      <section class="widget" id="widget-movers">
+        <h2>변동 Top 5</h2>
+        <div class="widget-body"><p class="muted">로딩 중…</p></div>
+      </section>
+      <section class="widget" id="widget-spend">
+        <h2>광고비 누적</h2>
+        <div class="widget-body"><p class="muted">로딩 중…</p></div>
       </section>
     </main>
 
@@ -57,5 +76,6 @@
 
     <script src="/static/js/env.js"></script>
     <script type="module" src="/static/js/main.js"></script>
+    <script type="module" src="/static/js/dashboard.js"></script>
   </body>
 </html>
