@@ -9,6 +9,8 @@ D5 version counter — `if_match_version` mismatch → 409.
 
 from __future__ import annotations
 
+import re
+
 import structlog
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -17,6 +19,25 @@ from rank_bidder.db.connection import get_connection, write_transaction
 from rank_bidder.db.models import KeywordUpdate
 from rank_bidder.db.repositories import keywords
 from rank_bidder.db.version import VersionConflictError
+
+#: decisions.reason에서 estimate 추정가 추출. 두 패턴 모두 매칭:
+#: - "[estimate:18830] BID_UP toward estimate 18830 (gap +21.9%)"
+#: - "CAP_REACHED at 10000 (estimate 26820 > cap, ...)"
+_ESTIMATE_RE = re.compile(r"estimate[:\s]+(\d+)")
+
+
+def _extract_estimate_from_reason(reason: str | None) -> int | None:
+    """결정 사유에서 Naver estimate 추정가 정수 추출. 없으면 None."""
+    if not reason:
+        return None
+    m = _ESTIMATE_RE.search(reason)
+    if m:
+        try:
+            return int(m.group(1))
+        except (ValueError, IndexError):
+            return None
+    return None
+
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/keywords", tags=["keywords"])
@@ -94,6 +115,7 @@ def list_keywords(
             "last_reason": r["last_reason"],
             "last_put_at": r["last_put_at"],
             "rank_observed": r["rank_observed"],
+            "recommended_cap": _extract_estimate_from_reason(r["last_reason"]),
         }
         for r in rows
     ]

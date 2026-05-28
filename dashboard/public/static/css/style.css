@@ -431,6 +431,22 @@ body.bw-layout {
   margin-left: var(--space-1);
 }
 
+/* CAP 권장가 안내 (estimate가 cap 초과 시) */
+.bw-cap-recommend {
+  font-size: var(--fs-caption);
+  color: var(--color-danger);
+  font-weight: 600;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.bw-cap-gap {
+  color: var(--color-warning);
+  font-weight: 500;
+  font-size: 0.7rem;
+  margin-left: 2px;
+}
+
 /* header 작은 보조 텍스트 */
 .muted-small {
   display: block;

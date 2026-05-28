@@ -107,6 +107,15 @@ function bidDelta(current, previous) {
   return `<span class="bw-delta-down">▼ ${diff.toLocaleString("ko-KR")}</span>`;
 }
 
+/** 권장 cap 안내 badge — Naver estimate가 현재 cap을 초과 시 빨강 "권장 N원" 표시.
+ * estimate <= cap이면 안내 안 함 (이미 충분). */
+function recommendedCapBadge(cap, recommended) {
+  if (recommended === null || recommended === undefined) return "";
+  if (recommended <= cap) return ""; // 충분 — 안내 불필요
+  const pct = Math.round(((recommended - cap) / cap) * 100);
+  return `<div class="bw-cap-recommend">권장 ${fmtKrw(recommended)} <span class="bw-cap-gap">(+${pct}%)</span></div>`;
+}
+
 /** 순위 표시: "현재 / 목표" — rank_observed null이면 "— / N위". */
 function rankDisplay(observed, target) {
   const tgt = target ? `${target}위` : "—";
@@ -203,7 +212,10 @@ function renderKeywords() {
             <span class="bw-bid-current">${fmtKrw(kw.current_bid)}</span>
             ${delta}
           </td>
-          <td class="num editable" data-field="bid_cap" title="클릭해서 편집">${fmtKrw(kw.bid_cap)}</td>
+          <td class="num editable" data-field="bid_cap" title="클릭해서 편집">
+            ${fmtKrw(kw.bid_cap)}
+            ${recommendedCapBadge(kw.bid_cap, kw.recommended_cap)}
+          </td>
           <td><span class="bw-badge ${badgeCls}">${escapeHtml(decLabel)}</span></td>
           <td class="muted bw-reason" title="${escapeHtml(kw.last_reason || "")}">${escapeHtml(reason)}</td>
           <td class="num muted">${putAt}</td>
