@@ -10,7 +10,7 @@ Description: |
 
 Globals:
   Function:
-    Timeout: 30
+    Timeout: 60  # Story 2.1 (2026-05-28): 30→60s — inter-sample sleep(1.5s) 도입으로 chunk 처리 시간 증가
     MemorySize: 512
     Runtime: python3.13
     Architectures:

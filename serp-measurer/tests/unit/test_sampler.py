@@ -13,6 +13,13 @@ import pytest
 from measurer import sampler
 
 
+@pytest.fixture(autouse=True)
+def _no_inter_sample_sleep(monkeypatch: pytest.MonkeyPatch):
+    """Story 2.1 — production은 inter-sample sleep 1.5s, test는 0으로 고정 (test runtime ↓)."""
+    monkeypatch.setattr(sampler, "SAMPLE_DELAY_S", 0.0)
+    yield
+
+
 def _mock_pipeline(rank_sequence: list[int | None]):
     """fetch_serp_html + extract_rank 조합을 ``rank_sequence`` 그대로 반환하도록.
 
@@ -127,6 +134,35 @@ def test_samples_preserves_none_positions() -> None:
     assert result["samples"] == [1, None, 2]
     # valid=2 → mode 동률 → median_low([1,2])=1
     assert result["chosen_rank"] == 1
+
+
+# Story 2.1 — inter-sample sleep (Naver Lambda IP rate-limit 회피)
+
+
+def test_inter_sample_sleep_called_between_samples(monkeypatch: pytest.MonkeyPatch) -> None:
+    """첫 sample 후부터 ``time.sleep(SAMPLE_DELAY_S)`` 호출 — samples_n=3 → sleep 2회.
+
+    autouse fixture가 SAMPLE_DELAY_S=0이라 호출되어도 즉시 return.
+    이 테스트는 sleep 호출 횟수만 검증.
+    """
+    monkeypatch.setattr(sampler, "SAMPLE_DELAY_S", 1.5)
+    fp, ep = _mock_pipeline([1, 1, 1])
+    sleep_calls: list[float] = []
+    with patch.object(sampler.time, "sleep", side_effect=lambda s: sleep_calls.append(s)), fp, ep:
+        sampler.sample_keyword("t", 3)
+    assert sleep_calls == [1.5, 1.5], (
+        f"samples_n=3 should yield 2 inter-sample sleeps of 1.5s, got {sleep_calls}"
+    )
+
+
+def test_no_inter_sample_sleep_when_delay_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SAMPLE_DELAY_S=0 → sleep 호출 0회 (test 환경 기본값 + override 호환)."""
+    monkeypatch.setattr(sampler, "SAMPLE_DELAY_S", 0.0)
+    fp, ep = _mock_pipeline([1, 1, 1])
+    sleep_calls: list[float] = []
+    with patch.object(sampler.time, "sleep", side_effect=lambda s: sleep_calls.append(s)), fp, ep:
+        sampler.sample_keyword("t", 3)
+    assert sleep_calls == [], f"SAMPLE_DELAY_S=0 should skip sleep, got {sleep_calls}"
 
 
 @pytest.fixture(autouse=True)

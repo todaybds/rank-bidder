@@ -9,10 +9,16 @@
 - 유효 샘플 < 2 → ``chosen_rank: None`` + ``errors=[MEASUREMENT_FAILURE]``.
 
 재시도 없음 — 단일 sample fetch 실패는 다음 sample이 자연 재시도 (FR-10 §빈결과 흡수).
+
+Story 2.1 patch (2026-05-28): inter-sample sleep 도입. Naver가 Lambda IP에 대해
+짧은 시간 내 다수 fetch를 rate-limit한다 (검증: VM IP는 200 OK, Lambda IP는 즉시
+fail 0.157s). sample 사이 ``SAMPLE_DELAY_S`` 휴식으로 fetch 부담 분산. 환경변수
+``RANKBIDDER_SAMPLE_DELAY_S``로 override 가능 (운영 측정 기반 조정).
 """
 
 from __future__ import annotations
 
+import os
 import statistics
 import time
 from typing import Any
@@ -23,6 +29,10 @@ from measurer.http_client import fetch_serp_html
 from measurer.parser import extract_rank
 
 log = structlog.get_logger(__name__)
+
+#: Story 2.1 (2026-05-28) — Naver Lambda IP rate-limit 회피용 sample 간 휴식.
+#: 1.5s 보수적 채택. 운영 후 측정 기반 조정 위해 env override 허용.
+SAMPLE_DELAY_S = float(os.environ.get("RANKBIDDER_SAMPLE_DELAY_S", "1.5"))
 
 
 def sample_keyword(
@@ -48,6 +58,9 @@ def sample_keyword(
     samples: list[int | None] = []
 
     for sample_idx in range(samples_n):
+        # Story 2.1: 첫 sample 후부터 inter-sample delay. Naver Lambda IP rate-limit 회피.
+        if sample_idx > 0 and SAMPLE_DELAY_S > 0:
+            time.sleep(SAMPLE_DELAY_S)
         html, status = fetch_serp_html(term)
         rank = extract_rank(html, term, aliases=aliases) if html else None
         samples.append(rank)

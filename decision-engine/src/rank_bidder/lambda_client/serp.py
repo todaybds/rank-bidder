@@ -22,10 +22,11 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-#: Story 2.1 — chunk size cap. Lambda Timeout 30s + KW당 ~6s 처리(3 sample × 2s).
-#: 10 KW × 6s = 60s — Lambda timeout 30s 초과하나, sampler 측 KW 단위 isolation으로
-#: 부분 응답 가능. 보수적 안전선: 10 KW면 1-2 KW만 timeout cut + 나머지 정상 측정.
-DEFAULT_CHUNK_SIZE = 10
+#: Story 2.1 (2026-05-28 patched): chunk size cap. Lambda Timeout 60s + KW당 ~5s 처리
+#: (3 sample × ~0.5s fetch + 2 inter-sample sleep × 1.5s = 4.5s + fetch latency).
+#: 5 KW × 5s ≈ 25s — Lambda Timeout 60s 안전 여유. 40 KW = 8 chunks × ~25s = 200s,
+#: cycle_full 5분 안에 처리 가능. inter-sample sleep으로 Naver rate-limit 회피.
+DEFAULT_CHUNK_SIZE = 5
 
 
 class LambdaClientError(Exception):
