@@ -8,42 +8,111 @@
     <link rel="stylesheet" href="/static/css/style.css" />
     <link rel="stylesheet" href="/static/css/policies.css" />
   </head>
-  <body>
-    <div id="chat-banner" class="warning" hidden></div>
-    <header>
-      <h1>Rank Bidder</h1>
-      <p class="muted">
-        업데이트: <span id="generated-at">—</span>
-        <button id="btn-refresh" type="button" class="link-button">즉시 새로고침</button>
-      </p>
-      <nav>
-        <a href="/system.html">시스템 통제</a> · <a href="/policies.html">정책 편집</a>
-      </nav>
-      <div class="actions" style="margin-top: 1rem;">
-        <button id="btn-import" type="button">키워드 import</button>
+  <body class="bw-layout">
+    <aside class="bw-sidebar">
+      <div class="bw-brand">
+        <h1>Rank Bidder</h1>
+        <p class="bw-brand-sub">네이버 SA 자동입찰</p>
       </div>
-    </header>
-    <main id="app" class="dashboard-grid">
-      <section class="widget" id="widget-hit-rate">
-        <h2>24h 적중률</h2>
-        <div class="widget-body"><p class="muted">로딩 중…</p></div>
+      <nav class="bw-nav">
+        <a href="/" class="bw-nav-item active">
+          <span class="bw-nav-icon">📊</span>대시보드
+        </a>
+        <a href="/system.html" class="bw-nav-item">
+          <span class="bw-nav-icon">⚙️</span>시스템 통제
+        </a>
+        <a href="/policies.html" class="bw-nav-item">
+          <span class="bw-nav-icon">📋</span>정책 편집
+        </a>
+      </nav>
+      <div class="bw-sidebar-footer">
+        <button id="btn-import" type="button" class="bw-btn-primary">＋ 키워드 import</button>
+      </div>
+    </aside>
+
+    <main class="bw-content">
+      <div id="chat-banner" class="warning" hidden></div>
+
+      <header class="bw-content-header">
+        <div>
+          <h2>대시보드</h2>
+          <p class="muted">
+            업데이트 <span id="generated-at">—</span>
+            <button id="btn-refresh" type="button" class="link-button">즉시 새로고침</button>
+          </p>
+        </div>
+      </header>
+
+      <section class="bw-summary-grid">
+        <div class="bw-summary-card">
+          <div class="bw-summary-label">24h 적중률</div>
+          <div class="bw-summary-value" id="sum-hit-rate">—</div>
+          <div class="bw-summary-sub" id="sum-hit-rate-sub">—</div>
+        </div>
+        <div class="bw-summary-card">
+          <div class="bw-summary-label">활성 키워드</div>
+          <div class="bw-summary-value" id="sum-active-kw">—</div>
+          <div class="bw-summary-sub" id="sum-active-kw-sub">목표 평균 2위</div>
+        </div>
+        <div class="bw-summary-card">
+          <div class="bw-summary-label">오늘 BID_UP</div>
+          <div class="bw-summary-value" id="sum-bid-up">—</div>
+          <div class="bw-summary-sub bw-up">▲ 입찰 인상</div>
+        </div>
+        <div class="bw-summary-card">
+          <div class="bw-summary-label">오늘 BID_DOWN</div>
+          <div class="bw-summary-value" id="sum-bid-down">—</div>
+          <div class="bw-summary-sub bw-down">▼ 입찰 인하</div>
+        </div>
+        <div class="bw-summary-card">
+          <div class="bw-summary-label">CAP 도달</div>
+          <div class="bw-summary-value" id="sum-cap-reached">—</div>
+          <div class="bw-summary-sub">최대 입찰가에서 stop</div>
+        </div>
       </section>
-      <section class="widget" id="widget-serp">
-        <h2>현재 SERP vs 목표</h2>
-        <div class="widget-body"><p class="muted">로딩 중…</p></div>
+
+      <section class="bw-keywords-section">
+        <div class="bw-keywords-header">
+          <h3>활성 키워드 <span class="bw-kw-count" id="kw-count">—</span></h3>
+          <input
+            type="search"
+            id="kw-search"
+            placeholder="키워드 검색…"
+            class="bw-search"
+            autocomplete="off"
+          />
+        </div>
+        <div class="bw-table-wrap">
+          <table class="bw-keywords-table">
+            <thead>
+              <tr>
+                <th class="num">No</th>
+                <th>키워드</th>
+                <th class="num">목표<br />순위</th>
+                <th class="num">현재<br />입찰가</th>
+                <th class="num">최대<br />입찰가</th>
+                <th>최근 결정</th>
+                <th>최근 결정 사유</th>
+                <th class="num">시각</th>
+              </tr>
+            </thead>
+            <tbody id="kw-tbody">
+              <tr>
+                <td colspan="8" class="muted" style="padding: 1.5rem; text-align: center;">
+                  로딩 중…
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
-      <section class="widget" id="widget-failures">
-        <h2>시스템 장애 (24h)</h2>
-        <div class="widget-body"><p class="muted">로딩 중…</p></div>
-      </section>
-      <section class="widget" id="widget-movers">
-        <h2>변동 Top 5</h2>
-        <div class="widget-body"><p class="muted">로딩 중…</p></div>
-      </section>
-      <section class="widget" id="widget-spend">
-        <h2>광고비 누적</h2>
-        <div class="widget-body"><p class="muted">로딩 중…</p></div>
-      </section>
+
+      <details class="bw-failures" id="failures-section">
+        <summary>최근 24시간 시스템 장애 <span id="failures-count">—</span></summary>
+        <div id="failures-body" class="bw-failures-body">
+          <p class="muted">로딩 중…</p>
+        </div>
+      </details>
     </main>
 
     <dialog id="import-modal">
@@ -64,7 +133,15 @@
         </label>
         <label>
           bid_cap (₩):
-          <input id="import-bid-cap" type="number" min="100" max="100000" step="100" value="5000" required />
+          <input
+            id="import-bid-cap"
+            type="number"
+            min="100"
+            max="100000"
+            step="100"
+            value="5000"
+            required
+          />
         </label>
         <div class="actions">
           <button id="import-submit" type="button">등록</button>
