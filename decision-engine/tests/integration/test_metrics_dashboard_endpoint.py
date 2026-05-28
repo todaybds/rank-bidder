@@ -44,8 +44,9 @@ def test_dashboard_endpoint_returns_5_widgets_schema(temp_db: Path, authed_env: 
     assert isinstance(body["movers_top5"], list)
     assert isinstance(body["spend_cum"], dict)
 
-    # spend_cum은 Story 4.4 미완 → available=false 박제
-    assert body["spend_cum"]["available"] is False
+    # spend_cum은 Story 4.4 완료 → spend_daily 테이블 존재 → available=true (데이터 0)
+    assert body["spend_cum"]["available"] is True
+    assert body["spend_cum"]["today_krw"] == 0
 
     # generated_at은 KST(+09:00) ISO 문자열
     assert "+09:00" in body["generated_at"]

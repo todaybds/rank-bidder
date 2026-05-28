@@ -207,14 +207,14 @@ def test_movers_top5_empty_when_no_bid_changes(temp_db: Path) -> None:
 # ---------- Widget 5: spend_cum ----------
 
 
-def test_spend_cum_returns_available_false_when_table_absent(temp_db: Path) -> None:
-    """Story 4.4 미완 → spend_daily 테이블 없음 → available=false + 친절 메시지."""
+def test_spend_cum_returns_available_true_with_zero_when_no_data(temp_db: Path) -> None:
+    """Story 4.4 완료 후 — spend_daily 테이블 존재 + 데이터 0 → available=true + 0원."""
     with get_connection() as conn:
         result = metrics.spend_cum(conn)
-    assert result["available"] is False
-    assert result["today_krw"] is None
+    assert result["available"] is True
+    assert result["today_krw"] == 0
+    assert result["month_krw"] == 0
     assert result["by_site"] == []
-    assert "수집 대기" in result["note"]
 
 
 # ---------- Widget-isolated error pattern ----------

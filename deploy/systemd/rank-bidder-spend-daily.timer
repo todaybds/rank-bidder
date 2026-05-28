@@ -1,0 +1,13 @@
+[Unit]
+Description=Rank Bidder spend daily — every day 00:30 KST (UTC 15:30)
+Requires=rank-bidder-spend-daily.service
+
+[Timer]
+# 매일 KST 00:30 = UTC 15:30
+OnCalendar=*-*-* 15:30:00
+Persistent=true
+AccuracySec=1min
+Unit=rank-bidder-spend-daily.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Rank Bidder health check — every minute
+Requires=rank-bidder-health-check.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Persistent=true
+AccuracySec=15s
+Unit=rank-bidder-health-check.service
+
+[Install]
+WantedBy=timers.target

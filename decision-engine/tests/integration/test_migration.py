@@ -48,8 +48,8 @@ def test_up_is_idempotent(temp_db: Path) -> None:
     applied = up(DEFAULT_MIGRATIONS_DIR)
     assert applied == 0
     with get_connection() as conn:
-        # Story 1.10 추가 후 latest=9 (0009 keyword_aliases)
-        assert current_version(conn) == 9
+        # Story 4.4 추가 후 latest=10 (0010 spend_daily)
+        assert current_version(conn) == 10
 
 
 def test_discover_migrations_rejects_non_sequential(tmp_path: Path) -> None:
@@ -72,8 +72,8 @@ def test_up_on_empty_db_returns_all_pending(empty_db: Path) -> None:
     """AC1: 0 → latest 적용 시 카운트 = 전체 migration 수."""
     configure(empty_db)
     applied = up(DEFAULT_MIGRATIONS_DIR)
-    # 0001..0009 (Story 1.10 keyword_aliases 시점 — 9개)
-    assert applied == 9
+    # 0001..0010 (Story 4.4 spend_daily 시점 — 10개)
+    assert applied == 10
 
 
 def test_0003_creates_heartbeats_table(temp_db: Path) -> None:
