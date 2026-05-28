@@ -19,6 +19,7 @@ fail 0.157s). sample 사이 ``SAMPLE_DELAY_S`` 휴식으로 fetch 부담 분산.
 from __future__ import annotations
 
 import os
+import random
 import statistics
 import time
 from typing import Any
@@ -30,9 +31,13 @@ from measurer.parser import extract_rank
 
 log = structlog.get_logger(__name__)
 
-#: Story 2.1 (2026-05-28) — Naver Lambda IP rate-limit 회피용 sample 간 휴식.
+#: Story 2.1 (2026-05-28) — Naver IP rate-limit 회피용 sample 간 휴식 (median).
 #: 1.5s 보수적 채택. 운영 후 측정 기반 조정 위해 env override 허용.
 SAMPLE_DELAY_S = float(os.environ.get("RANKBIDDER_SAMPLE_DELAY_S", "1.5"))
+
+#: 봇 회피 강화 (2026-05-28 후속): 고정 delay 대신 ±range 랜덤. 동일 cadence가
+#: 봇 시그너처가 되는 거 회피. 0이면 비활성 (legacy 동작).
+SAMPLE_DELAY_JITTER_S = float(os.environ.get("RANKBIDDER_SAMPLE_DELAY_JITTER_S", "0.8"))
 
 
 def sample_keyword(
@@ -58,9 +63,13 @@ def sample_keyword(
     samples: list[int | None] = []
 
     for sample_idx in range(samples_n):
-        # Story 2.1: 첫 sample 후부터 inter-sample delay. Naver Lambda IP rate-limit 회피.
+        # Story 2.1 + 2026-05-28 hot-fix: 첫 sample 후부터 inter-sample delay.
+        # 봇 회피 강화 — 고정 delay 대신 SAMPLE_DELAY_S ± JITTER 랜덤. 일정한 cadence
+        # 가 봇 시그너처가 되는 패턴 회피.
         if sample_idx > 0 and SAMPLE_DELAY_S > 0:
-            time.sleep(SAMPLE_DELAY_S)
+            jitter = random.uniform(-SAMPLE_DELAY_JITTER_S, SAMPLE_DELAY_JITTER_S)
+            sleep_s = max(0.1, SAMPLE_DELAY_S + jitter)
+            time.sleep(sleep_s)
         html, status = fetch_serp_html(term)
         rank = extract_rank(html, term, aliases=aliases) if html else None
         samples.append(rank)

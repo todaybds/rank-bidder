@@ -27,6 +27,14 @@ def _make_response(status_code: int, text: str = "") -> MagicMock:
     return resp
 
 
+@pytest.fixture(autouse=True)
+def _skip_warmup(monkeypatch: pytest.MonkeyPatch):
+    """2026-05-28 봇 회피 패치 — fetch_serp_html 첫 호출 시 _warmup_session이 m.naver.com을
+    GET함. 테스트는 SERP fetch만 검증하므로 warmup은 mock으로 no-op 처리.
+    """
+    monkeypatch.setattr(http_client, "_warmup_session", lambda timeout=10.0: None)
+
+
 def test_happy_path_200_returns_text_and_status() -> None:
     fake_response = _make_response(200, "<html>SERP body</html>")
     with patch.object(http_client._SESSION, "get", return_value=fake_response) as fake_get:
@@ -74,11 +82,23 @@ def test_generic_request_exception_returns_none_zero() -> None:
     assert status == 0
 
 
-def test_session_headers_contain_mobile_ua_and_kor_lang() -> None:
-    """Module-level Session에 모바일 UA + ko-KR 박제 확인."""
-    assert "Mobile Safari" in http_client._SESSION.headers["User-Agent"]
-    assert http_client._SESSION.headers["Accept-Language"] == "ko-KR,ko;q=0.9"
-    assert http_client._SESSION.headers["Connection"] == "keep-alive"
+def test_build_headers_returns_mobile_ua_and_kor_lang() -> None:
+    """2026-05-28 봇 회피 갱신: _build_headers()가 매 호출 모바일 UA 풀에서 회전 +
+    한국어 Accept-Language + Referer 박제 검증.
+    """
+    headers = http_client._build_headers(referer="https://m.naver.com/")
+    assert "Mobile" in headers["User-Agent"] or "iPhone" in headers["User-Agent"]
+    assert "ko-KR" in headers["Accept-Language"]
+    assert headers["Connection"] == "keep-alive"
+    assert headers["Referer"] == "https://m.naver.com/"
+    # UA pool 자체 검증 — 5개 이상의 다양한 UA 박제
+    assert len(http_client._MOBILE_UA_POOL) >= 4
+
+
+def test_build_headers_rotates_user_agent() -> None:
+    """반복 호출 시 UA가 회전 (단일 시그너처 박히는 거 회피)."""
+    uas = {http_client._build_headers()["User-Agent"] for _ in range(50)}
+    assert len(uas) >= 2  # 50회 시도면 최소 2개 이상 다른 UA 박힘 (확률적으로 사실상 보장)
 
 
 def test_custom_timeout_passed_to_session() -> None:
