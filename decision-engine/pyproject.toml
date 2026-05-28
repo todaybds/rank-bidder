@@ -19,7 +19,11 @@ dependencies = [
     "uuid-utils>=0.10,<1.0",
     "psutil>=6.0,<7.0",
     "filelock>=3.16,<4.0",
+    "serp-measurer",
 ]
+
+[tool.uv.sources]
+serp-measurer = { workspace = true }
 
 [dependency-groups]
 dev = [

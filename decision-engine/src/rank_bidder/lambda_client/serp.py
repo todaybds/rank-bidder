@@ -1,148 +1,83 @@
-"""SERP Lambda Function URL client (Story 1.9).
+"""SERP measurement — VM-local fetch+parse (Story 2.1 hot-fix 2026-05-28).
 
-Story 1.4 Lambda(`rank-bidder-serp-measurer` on ap-northeast-2)에 단발 POST.
-``X-Auth-Token`` 헤더 + 단발 httpx Client + 60초 timeout.
+**아키텍처 전환 박제 (2026-05-28)**: 본 모듈은 원래 AWS Lambda(ap-northeast-2 Seoul)에
+HTTP POST하던 클라이언트였으나, Naver가 Lambda Seoul IP에 대해 ``power_link_body`` 광고
+영역을 비워서 SERP를 반환하는 것이 확정 (VM Oregon IP는 정상 광고 5개 노출, Lambda 응답
+0개). cycle_full 측정 성공률 0/40 = 0% 누적.
 
-응답 contract (Story 1.4 D13):
-    {"results":[{"id","samples","chosen_rank","latency_ms","mode_count","dispersion","unique_count","errors?"}]}
+**전환 결정**: SERP fetch를 VM(GCP us-west1 Oregon)에서 직접 수행. ``serp-measurer`` 패키지
+``sampler.sample_keyword`` 재사용 (parser는 동일 코드, VM-fetch만 신규).
 
-Story 2.1 bulk import patch (2026-05-28): KW 다수(>chunk_size) 호출 시 자동 chunk +
-sequential 호출. Lambda Timeout(30s)을 KW × samples_n × ~2s SERP latency가 초과하지
-않도록 chunk_size=10 보수적 채택. 단일 chunk 내 1 KW fail → 그 KW만 measurement_failure
-응답(handler isolation), chunk 전체 fail → all-chunk fallback.
+**시그니처 동일 유지** → cycle_full/cycle_hot/integration 테스트 변경 0. Lambda chunk_size,
+function_url, auth_token 옵션은 호환 위해 받기만 하고 무시 (deprecated, 추후 cleanup epic).
+
+**모듈명 'lambda_client'는 더 이상 Lambda를 호출하지 않음** — rename은 cleanup epic
+(Phase B). LambdaClientError는 이번엔 거의 발생 안 함 (fetch 실패는 sample_keyword 안에서
+None 처리, measurement_failure 응답으로 자연 흐름).
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
-import httpx
 import structlog
+from measurer.sampler import sample_keyword
 
 log = structlog.get_logger(__name__)
 
-#: Story 2.1 (2026-05-28 patched): chunk size cap. Lambda Timeout 60s + KW당 ~5s 처리
-#: (3 sample × ~0.5s fetch + 2 inter-sample sleep × 1.5s = 4.5s + fetch latency).
-#: 5 KW × 5s ≈ 25s — Lambda Timeout 60s 안전 여유. 40 KW = 8 chunks × ~25s = 200s,
-#: cycle_full 5분 안에 처리 가능. inter-sample sleep으로 Naver rate-limit 회피.
-DEFAULT_CHUNK_SIZE = 5
-
 
 class LambdaClientError(Exception):
-    """Lambda 호출 실패 — 상위에서 measurement_failure 처리."""
+    """SERP 측정 실패 — 상위에서 모든 KW SKIP_STALE 처리.
 
-
-def _post_single_chunk(
-    keywords: list[dict[str, Any]],
-    *,
-    samples_n: int,
-    timeout_s: float,
-    url: str,
-    token: str,
-    client: httpx.Client | None,
-) -> list[dict[str, Any]]:
-    """단일 Lambda 호출. results list 반환. 호출 측 keyword payload는 그대로 통과."""
-    payload = {"keywords": keywords, "samples_n": samples_n}
-    headers = {"X-Auth-Token": token, "Content-Type": "application/json"}
-    try:
-        if client is not None:
-            response = client.post(url, json=payload, headers=headers)
-        else:
-            with httpx.Client(timeout=timeout_s) as c:
-                response = c.post(url, json=payload, headers=headers)
-    except httpx.HTTPError as exc:
-        log.warning("lambda.http_error", error=str(exc), chunk_size=len(keywords))
-        raise LambdaClientError(f"http error: {exc}") from exc
-
-    if response.status_code != 200:
-        log.warning(
-            "lambda.non_200",
-            status=response.status_code,
-            body=response.text[:200],
-            chunk_size=len(keywords),
-        )
-        raise LambdaClientError(f"non-200: {response.status_code} {response.text[:200]}")
-
-    try:
-        body = response.json()
-    except ValueError as exc:
-        raise LambdaClientError(f"non-JSON response: {exc}") from exc
-
-    results = body.get("results")
-    if not isinstance(results, list):
-        raise LambdaClientError(f"missing 'results' list in response: {body}")
-    return results
+    VM-local 전환 후엔 거의 발생 안 함 (개별 KW fetch 실패는 sample_keyword가 None
+    samples로 흡수, valid<2면 measurement_failure 응답). 본 예외는 호출 측 호환 위해
+    유지 — 향후 cleanup epic에서 rename + 폐기.
+    """
 
 
 def measure_keywords(
     keywords: list[dict[str, Any]],
     *,
     samples_n: int = 3,
-    timeout_s: float = 60.0,
-    chunk_size: int = DEFAULT_CHUNK_SIZE,
-    function_url: str | None = None,
-    auth_token: str | None = None,
-    client: httpx.Client | None = None,
+    timeout_s: float = 60.0,  # noqa: ARG001 — Lambda HTTP timeout이었음, 무시
+    chunk_size: int = 5,  # noqa: ARG001 — Lambda chunk였음, 무시
+    function_url: str | None = None,  # noqa: ARG001 — Lambda URL, 무시
+    auth_token: str | None = None,  # noqa: ARG001 — Lambda 토큰, 무시
+    client: object | None = None,  # noqa: ARG001 — httpx.Client, 무시
 ) -> list[dict[str, Any]]:
-    """Lambda Function URL 호출 → results 리스트 반환. KW가 ``chunk_size`` 초과 시 자동 분할.
+    """VM-local SERP fetch+parse — KW list 측정 후 results 리스트 반환.
 
     Args:
-        keywords: ``[{"id": "...", "term": "...", "aliases": [...optional...]}, ...]``
-            (최대 50개/chunk — Story 1.4 D13 Lambda max). chunk loop으로 큰 list도 처리.
-        samples_n: 3-5.
-        timeout_s: HTTP timeout per chunk (default 60s — Lambda 30s 처리 + 클라이언트
-            버퍼 30s).
-        chunk_size: Lambda 호출 1회 당 KW 개수 cap (default 10).
-        function_url: override (None이면 env ``RANKBIDDER_LAMBDA_FUNCTION_URL``).
-        auth_token: override (None이면 env ``RANKBIDDER_LAMBDA_AUTH_TOKEN``).
+        keywords: ``[{"id": "...", "term": "...", "aliases": [...optional...]}, ...]``.
+        samples_n: 3-5 (Story 1.4 D13).
+        timeout_s/chunk_size/function_url/auth_token/client: Lambda 시절 옵션,
+            backward-compat 위해 받기만 함. 무시.
 
     Returns:
-        Story 1.4 응답 ``results`` 리스트 — 모든 chunk results 순서 보존하여 concat.
+        Lambda 응답 contract 동일 (Story 1.4 D13):
+            ``[{"id", "samples", "chosen_rank", "latency_ms", "mode_count",
+              "dispersion", "unique_count", "errors?"}, ...]``
+        순서는 입력 keywords 순서 보존.
 
     Raises:
-        LambdaClientError: env 누락 / 어떤 chunk라도 비-200 / 응답 파싱 실패.
-            단일 chunk 실패는 전체 raise (상위 cycle_full이 모든 KW를 SKIP_STALE 처리).
+        LambdaClientError: 거의 발생 안 함. 시그니처 호환 위해 보존.
     """
-    url = function_url or os.environ.get("RANKBIDDER_LAMBDA_FUNCTION_URL", "")
-    token = auth_token or os.environ.get("RANKBIDDER_LAMBDA_AUTH_TOKEN", "")
-    if not url or not token:
-        raise LambdaClientError(
-            "RANKBIDDER_LAMBDA_FUNCTION_URL / RANKBIDDER_LAMBDA_AUTH_TOKEN env missing"
-        )
-    if chunk_size < 1:
-        raise ValueError(f"chunk_size must be >= 1, got {chunk_size}")
-
-    # Single-chunk fast path
-    if len(keywords) <= chunk_size:
-        return _post_single_chunk(
-            keywords,
-            samples_n=samples_n,
-            timeout_s=timeout_s,
-            url=url,
-            token=token,
-            client=client,
-        )
-
-    # Multi-chunk loop. 순서 보존.
-    all_results: list[dict[str, Any]] = []
-    total_chunks = (len(keywords) + chunk_size - 1) // chunk_size
-    for idx in range(0, len(keywords), chunk_size):
-        chunk = keywords[idx : idx + chunk_size]
-        chunk_idx = idx // chunk_size + 1
-        log.info(
-            "lambda.chunk_start",
-            chunk_idx=chunk_idx,
-            total_chunks=total_chunks,
-            chunk_size=len(chunk),
-        )
-        chunk_results = _post_single_chunk(
-            chunk,
-            samples_n=samples_n,
-            timeout_s=timeout_s,
-            url=url,
-            token=token,
-            client=client,
-        )
-        all_results.extend(chunk_results)
-    return all_results
+    results: list[dict[str, Any]] = []
+    for kw in keywords:
+        kw_id = kw.get("id")
+        term = kw.get("term", "")
+        aliases = kw.get("aliases") or None
+        if not kw_id or not term:
+            log.warning("serp_local.invalid_kw", kw=kw)
+            results.append({
+                "id": kw_id or "",
+                "samples": [],
+                "chosen_rank": None,
+                "latency_ms": 0,
+                "errors": [{"code": "INVALID_KEYWORD", "message": "id/term missing"}],
+            })
+            continue
+        sample_result = sample_keyword(term, samples_n, aliases=aliases)
+        sample_result["id"] = kw_id
+        results.append(sample_result)
+    return results

@@ -1,140 +1,101 @@
-"""Story 1.9 — lambda_client.serp.measure_keywords."""
+"""Story 2.1 hot-fix (2026-05-28) — lambda_client.serp.measure_keywords.
+
+본 테스트는 VM-local fetch+parse 전환(2026-05-28) 이후의 unit test.
+옛 Lambda HTTP mock 테스트는 같은 commit에서 폐기 (httpx/MockTransport, chunk loop
+등은 더 이상 작동하지 않음). 모듈명 'lambda_client'는 backward-compat 유지, rename은
+cleanup epic.
+
+검증 범위:
+  - keywords 시퀀스 → sample_keyword per-KW 호출 + 응답 dict에 id 박제
+  - aliases 정상 passthrough
+  - 빈 id/term은 INVALID_KEYWORD 에러 박스
+  - 시그니처 옵션(chunk_size/function_url 등)은 backward-compat 위해 받기만
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
-import httpx
-import pytest
 from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
 
 
-@pytest.fixture(autouse=True)
-def _env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.setenv("RANKBIDDER_LAMBDA_FUNCTION_URL", "https://fake.lambda-url/")
-    monkeypatch.setenv("RANKBIDDER_LAMBDA_AUTH_TOKEN", "test-token")
-    yield
+def _fake_sample_result(samples_n: int = 3) -> dict:
+    return {
+        "samples": [1] * samples_n,
+        "chosen_rank": 1,
+        "latency_ms": 123,
+        "mode_count": 1,
+        "dispersion": 0,
+        "unique_count": 1,
+    }
 
 
-def _mock_client(handler):  # type: ignore[no-untyped-def]
-    """httpx.Client with MockTransport — test에서 직접 주입."""
-    return httpx.Client(transport=httpx.MockTransport(handler))
+def test_measure_keywords_calls_sample_per_kw_and_attaches_id() -> None:
+    keywords = [
+        {"id": "kw-A", "term": "수자인", "aliases": ["수자인아파트"]},
+        {"id": "kw-B", "term": "비스타동원"},
+    ]
+    # side_effect로 매 호출마다 새 dict 반환 — 같은 dict 객체 공유 시 id 덮어쓰기 방어.
+    with patch(
+        "rank_bidder.lambda_client.serp.sample_keyword",
+        side_effect=lambda *a, **kw: _fake_sample_result(),
+    ) as mock_sample:
+        results = measure_keywords(keywords, samples_n=3)
 
+    assert mock_sample.call_count == 2
+    # aliases passthrough — kw-A는 list, kw-B는 None
+    call_A = mock_sample.call_args_list[0]
+    call_B = mock_sample.call_args_list[1]
+    assert call_A.args[0] == "수자인" and call_A.args[1] == 3
+    assert call_A.kwargs["aliases"] == ["수자인아파트"]
+    assert call_B.args[0] == "비스타동원"
+    assert call_B.kwargs["aliases"] is None
 
-def test_happy_path_returns_results() -> None:
-    def handler(req: httpx.Request) -> httpx.Response:
-        assert req.headers["X-Auth-Token"] == "test-token"
-        return httpx.Response(
-            200,
-            json={"results": [{"id": "kw1", "samples": [1, 1], "chosen_rank": 1}]},
-        )
-
-    with _mock_client(handler) as c:
-        results = measure_keywords([{"id": "kw1", "term": "수자인"}], samples_n=3, client=c)
-    assert len(results) == 1
+    # 응답 형태 — id 박제 + sample_keyword 응답 전체 보존
+    assert [r["id"] for r in results] == ["kw-A", "kw-B"]
     assert results[0]["chosen_rank"] == 1
+    assert results[0]["samples"] == [1, 1, 1]
 
 
-def test_missing_env_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("RANKBIDDER_LAMBDA_FUNCTION_URL", raising=False)
-    with pytest.raises(LambdaClientError, match="env missing"):
-        measure_keywords([{"id": "k", "term": "t"}])
+def test_measure_keywords_invalid_kw_returns_error_box() -> None:
+    keywords = [
+        {"id": "", "term": "수자인"},     # id 비어있음
+        {"id": "kw-X", "term": ""},        # term 비어있음
+        {"id": "kw-OK", "term": "비스타동원"},
+    ]
+    with patch(
+        "rank_bidder.lambda_client.serp.sample_keyword",
+        side_effect=lambda *a, **kw: _fake_sample_result(),
+    ) as mock_sample:
+        results = measure_keywords(keywords, samples_n=3)
+
+    # 유효 KW 1개만 sample_keyword 호출
+    assert mock_sample.call_count == 1
+    assert len(results) == 3
+    assert results[0]["errors"][0]["code"] == "INVALID_KEYWORD"
+    assert results[1]["errors"][0]["code"] == "INVALID_KEYWORD"
+    assert results[2]["chosen_rank"] == 1
 
 
-def test_non_200_raises() -> None:
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="boom")
-
-    with _mock_client(handler) as c, pytest.raises(LambdaClientError, match="non-200"):
-        measure_keywords([{"id": "k", "term": "t"}], client=c)
-
-
-def test_missing_results_key_raises() -> None:
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"oops": []})
-
-    with _mock_client(handler) as c, pytest.raises(LambdaClientError, match="missing 'results'"):
-        measure_keywords([{"id": "k", "term": "t"}], client=c)
-
-
-def test_http_error_raises() -> None:
-    mock_client = MagicMock()
-    mock_client.post.side_effect = httpx.ConnectError("DNS fail")
-    with pytest.raises(LambdaClientError, match="http error"):
-        measure_keywords([{"id": "k", "term": "t"}], client=mock_client)
-
-
-# Story 2.1 — chunk loop 자동 분할 (bulk import 후 cycle_full 다수 KW)
-
-
-def test_chunk_loop_splits_large_list_preserves_order() -> None:
-    """KW 25개 + chunk_size=10 → 3 chunks 호출 + results 순서 보존."""
-    chunk_count = {"calls": 0}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        chunk_count["calls"] += 1
-        body = req.read()
-        import json
-
-        payload = json.loads(body)
-        # Echo back chunk KW ids as results.
-        return httpx.Response(
-            200,
-            json={
-                "results": [
-                    {"id": kw["id"], "samples": [1, 1], "chosen_rank": 1}
-                    for kw in payload["keywords"]
-                ]
-            },
+def test_legacy_lambda_options_accepted_and_ignored() -> None:
+    """chunk_size / function_url / auth_token / client 옵션은 backward-compat 위해 무시."""
+    with patch(
+        "rank_bidder.lambda_client.serp.sample_keyword",
+        return_value=_fake_sample_result(),
+    ) as mock_sample:
+        results = measure_keywords(
+            [{"id": "k", "term": "t"}],
+            samples_n=3,
+            timeout_s=99.0,
+            chunk_size=999,
+            function_url="https://ignored",
+            auth_token="ignored",
+            client=object(),  # 무시됨
         )
-
-    keywords = [{"id": f"kw-{i:03}", "term": f"term-{i}"} for i in range(25)]
-    with _mock_client(handler) as c:
-        results = measure_keywords(keywords, samples_n=3, chunk_size=10, client=c)
-
-    assert chunk_count["calls"] == 3, "25 KW with chunk=10 should produce 3 chunks (10+10+5)"
-    assert len(results) == 25
-    # 순서 보존 — chunk 1: 0..9, chunk 2: 10..19, chunk 3: 20..24.
-    assert [r["id"] for r in results] == [f"kw-{i:03}" for i in range(25)]
+    assert mock_sample.call_count == 1
+    assert results[0]["id"] == "k"
 
 
-def test_chunk_size_invalid_raises() -> None:
-    with pytest.raises(ValueError, match="chunk_size must be >= 1"):
-        measure_keywords([{"id": "k", "term": "t"}], chunk_size=0)
-
-
-def test_chunk_loop_single_chunk_fast_path() -> None:
-    """KW ≤ chunk_size → 단일 chunk 호출 (1번)."""
-    chunk_count = {"calls": 0}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        chunk_count["calls"] += 1
-        return httpx.Response(
-            200,
-            json={"results": [{"id": "k", "samples": [1, 1], "chosen_rank": 1}]},
-        )
-
-    with _mock_client(handler) as c:
-        results = measure_keywords([{"id": "k", "term": "t"}], chunk_size=10, client=c)
-    assert chunk_count["calls"] == 1
-    assert len(results) == 1
-
-
-def test_chunk_loop_failure_propagates() -> None:
-    """첫 chunk 성공 + 둘째 chunk 500 → 전체 LambdaClientError raise."""
-    chunk_count = {"calls": 0}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        chunk_count["calls"] += 1
-        if chunk_count["calls"] == 1:
-            return httpx.Response(
-                200,
-                json={"results": [{"id": "k", "samples": [1, 1], "chosen_rank": 1}]},
-            )
-        return httpx.Response(500, text="boom on second chunk")
-
-    keywords = [{"id": f"kw-{i}", "term": f"t-{i}"} for i in range(15)]
-    with _mock_client(handler) as c, pytest.raises(LambdaClientError, match="non-200"):
-        measure_keywords(keywords, chunk_size=10, client=c)
-    assert chunk_count["calls"] == 2
+def test_lambda_client_error_class_still_exists() -> None:
+    """backward-compat: cycle_full이 LambdaClientError를 import 중."""
+    assert issubclass(LambdaClientError, Exception)
