@@ -49,7 +49,16 @@ def list_keywords(
       (SELECT d.decided_at FROM decisions d WHERE d.keyword_id = k.id
         ORDER BY d.id DESC LIMIT 1) AS last_decision_at,
       (SELECT d.reason FROM decisions d WHERE d.keyword_id = k.id
-        ORDER BY d.id DESC LIMIT 1) AS last_reason
+        ORDER BY d.id DESC LIMIT 1) AS last_reason,
+      (SELECT d.decided_at FROM decisions d
+        WHERE d.keyword_id = k.id AND d.decision IN ('BID_UP','BID_DOWN')
+        ORDER BY d.id DESC LIMIT 1) AS last_put_at,
+      (SELECT d.old_bid FROM decisions d
+        WHERE d.keyword_id = k.id AND d.decision IN ('BID_UP','BID_DOWN')
+        ORDER BY d.id DESC LIMIT 1) AS previous_bid,
+      (SELECT m.rank_final FROM measurements m
+        WHERE m.keyword_id = k.id
+        ORDER BY m.id DESC LIMIT 1) AS rank_observed
     FROM keywords k
     WHERE 1=1
     """
@@ -79,9 +88,12 @@ def list_keywords(
             "enabled": bool(r["enabled"]),
             "version": r["version"],
             "current_bid": r["current_bid"],
+            "previous_bid": r["previous_bid"],
             "last_decision": r["last_decision"],
             "last_decision_at": r["last_decision_at"],
             "last_reason": r["last_reason"],
+            "last_put_at": r["last_put_at"],
+            "rank_observed": r["rank_observed"],
         }
         for r in rows
     ]

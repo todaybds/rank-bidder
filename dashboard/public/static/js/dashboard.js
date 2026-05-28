@@ -62,6 +62,61 @@ const decisionBadgeClass = {
   SKIP_STALE: "bw-badge-muted",
 };
 
+const decisionLabel = {
+  BID_UP: "▲ UP",
+  BID_DOWN: "▼ DOWN",
+  HOLD: "= HOLD",
+  CAP_REACHED: "■ CAP",
+  SKIP_STALE: "? SKIP",
+};
+
+/** 결정 사유 축약 — 길이 줄이고 핵심만. tooltip은 full 보존. */
+function shortReason(reason, decision) {
+  if (!reason) return "";
+  // [estimate:N] 패턴 — gap만 추출
+  const gap = reason.match(/gap\s+([+-]?[\d.]+%)/);
+  if (gap) return `estimate gap ${gap[1]}`;
+  if (decision === "CAP_REACHED") {
+    const cap = reason.match(/CAP_REACHED at (\d+)/);
+    return cap ? `cap ${Number(cap[1]).toLocaleString("ko-KR")}원` : "cap 도달";
+  }
+  if (decision === "HOLD") {
+    if (reason.includes("deadband")) return "estimate 근접 (HOLD)";
+    if (reason.includes("==")) return "목표 일치";
+    if (reason.includes("PAUSED")) return "시스템 일시정지";
+    return "HOLD";
+  }
+  if (reason.includes("BID_DOWN_FLOORED")) return "최저 100원 도달";
+  if (reason.includes("BID_UP_CAPPED")) return "최대입찰가 도달";
+  if (reason.includes("CAP_CLIP_DOWN")) return "최대입찰가 인하 적용";
+  if (reason.includes("MEASUREMENT_FAILURE")) return "측정 실패";
+  if (reason.includes("ESTIMATE_UNAVAILABLE")) return "추정 데이터 없음";
+  return reason.slice(0, 40);
+}
+
+/** bid 변동 표시 (▲ +800 / ▼ -100 / 변동 없음). */
+function bidDelta(current, previous) {
+  if (current === null || current === undefined || previous === null || previous === undefined) {
+    return "";
+  }
+  const diff = current - previous;
+  if (diff === 0) return "";
+  if (diff > 0) {
+    return `<span class="bw-delta-up">▲ +${diff.toLocaleString("ko-KR")}</span>`;
+  }
+  return `<span class="bw-delta-down">▼ ${diff.toLocaleString("ko-KR")}</span>`;
+}
+
+/** 순위 표시: "현재 / 목표" — rank_observed null이면 "— / N위". */
+function rankDisplay(observed, target) {
+  const tgt = target ? `${target}위` : "—";
+  if (observed === null || observed === undefined) {
+    return `<span class="muted">—</span> / <span class="bw-rank-target">${tgt}</span>`;
+  }
+  const obsCls = observed === target ? "bw-rank-hit" : "bw-rank-miss";
+  return `<span class="${obsCls}">${observed}위</span> / <span class="bw-rank-target">${tgt}</span>`;
+}
+
 let keywordsCache = [];
 let selected = new Set();
 
@@ -107,20 +162,34 @@ function renderKeywords() {
       .map((kw, idx) => {
         const dec = kw.last_decision || "—";
         const badgeCls = decisionBadgeClass[dec] || "bw-badge-muted";
-        const decLabel = dec === "—" ? "없음" : dec;
+        const decLabel = dec === "—" ? "—" : decisionLabel[dec] || dec;
         const checked = selected.has(kw.id) ? "checked" : "";
         const enabledChecked = kw.enabled ? "checked" : "";
-        const stateCls = kw.enabled ? "" : "bw-row-disabled";
-        return `<tr class="${stateCls}" data-kw-id="${escapeHtml(kw.id)}" data-version="${kw.version}">
+        const rowCls = [
+          kw.enabled ? "" : "bw-row-disabled",
+          dec === "CAP_REACHED" ? "bw-row-cap" : "",
+          dec === "SKIP_STALE" ? "bw-row-stale" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const delta = bidDelta(kw.current_bid, kw.previous_bid);
+        const reason = shortReason(kw.last_reason, dec);
+        const putAt = kw.last_put_at
+          ? fmtKstTime(kw.last_put_at)
+          : '<span class="muted">변경 이력 없음</span>';
+        return `<tr class="${rowCls}" data-kw-id="${escapeHtml(kw.id)}" data-version="${kw.version}">
           <td class="check"><input type="checkbox" class="kw-check" data-id="${escapeHtml(kw.id)}" ${checked} /></td>
           <td class="num">${idx + 1}</td>
           <td class="bw-term">${escapeHtml(kw.term)}</td>
-          <td class="num editable" data-field="target_rank" title="클릭해서 편집">${fmtRank(kw.target_rank)}</td>
-          <td class="num bw-bid-current">${fmtKrw(kw.current_bid)}</td>
+          <td class="num bw-rank-cell">${rankDisplay(kw.rank_observed, kw.target_rank)}</td>
+          <td class="num bw-bid-cell">
+            <span class="bw-bid-current">${fmtKrw(kw.current_bid)}</span>
+            ${delta}
+          </td>
           <td class="num editable" data-field="bid_cap" title="클릭해서 편집">${fmtKrw(kw.bid_cap)}</td>
           <td><span class="bw-badge ${badgeCls}">${escapeHtml(decLabel)}</span></td>
-          <td class="muted bw-reason" title="${escapeHtml(kw.last_reason || "")}">${escapeHtml((kw.last_reason || "").slice(0, 50))}</td>
-          <td class="num muted">${escapeHtml(fmtKstTime(kw.last_decision_at))}</td>
+          <td class="muted bw-reason" title="${escapeHtml(kw.last_reason || "")}">${escapeHtml(reason)}</td>
+          <td class="num muted">${putAt}</td>
           <td class="check"><input type="checkbox" class="kw-toggle" data-id="${escapeHtml(kw.id)}" data-version="${kw.version}" ${enabledChecked} /></td>
         </tr>`;
       })
