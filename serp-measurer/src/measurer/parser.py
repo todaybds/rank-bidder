@@ -88,56 +88,96 @@ def _resolve_rank(li_tag: object, dom_index: int, term: str) -> int:
     return onclick_rank
 
 
-def extract_rank(html: str | None, term: str) -> int | None:
-    """SERP HTML에서 ``term`` 일치 광고의 1-based rank 추출 (v2).
+def _build_candidate_terms(term: str, aliases: list[str] | None) -> list[tuple[str, str]]:
+    """Story 1.10: term + aliases를 normalize + dedupe해서 (label, normalized) 리스트로 반환.
+
+    label = ``"term"`` (KW 본 term) 또는 ``"alias"``. match_found 로그에 ``matched_via`` 박제용.
+    """
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    term_norm = _normalize(term)
+    if term_norm:
+        out.append(("term", term_norm))
+        seen.add(term_norm)
+    if aliases:
+        for alias in aliases:
+            if not isinstance(alias, str):
+                continue
+            norm = _normalize(alias)
+            if not norm or norm in seen:
+                continue
+            out.append(("alias", norm))
+            seen.add(norm)
+    return out
+
+
+def extract_rank(
+    html: str | None,
+    term: str,
+    aliases: list[str] | None = None,
+) -> int | None:
+    """SERP HTML에서 ``term`` 또는 ``aliases`` 일치 광고의 1-based rank 추출 (v2.1).
+
+    Story 1.10: ``aliases`` optional 도입. term + aliases 중 하나라도 단어경계 매치
+    시 인정. 한 광고에 여러 후보가 매치돼도 첫 광고만 채택.
 
     Args:
         html: SERP HTML 전체 (``http_client.fetch_serp_html`` 출력).
-        term: 검색 키워드. 광고 항목 텍스트에 단어경계 안에서 매치되는 첫 항목 채택.
+        term: 검색 키워드.
+        aliases: KW alias 후보 list (광고 텍스트 변형 표현). None/빈 list → v1.4b 호환
+            (term-only 매칭).
 
     Returns:
-        매치 항목의 1-based 순위 — onclick ``r=`` 값 우선, 부재 시 DOM 순서.
+        매치 광고의 1-based 순위 — onclick ``r=`` 값 우선, 부재 시 DOM 순서.
         다음 경우 None:
           - ``html`` 이 None 또는 빈 문자열
-          - ``term`` 이 빈 문자열 / 공백뿐
-          - ``<ul id="power_link_body">`` 부재 (광고 영역 없음 OR 마크업 변경)
+          - ``term`` 이 빈 문자열 / 공백뿐 AND aliases도 비어있음
+          - ``<ul id="power_link_body">`` 부재
           - 광고 영역에 ``<li>`` direct child 없음
-          - 어떤 광고 항목 텍스트에도 ``term`` 단어경계 매치 없음
+          - 어떤 광고에도 term/aliases 매치 없음
     """
-    if not html or not term or not term.strip():
+    if not html:
         return None
 
-    term_normalized = _normalize(term)
-    if not term_normalized:
+    candidates = _build_candidate_terms(term, aliases)
+    if not candidates:
         return None
 
     try:
         soup = BeautifulSoup(html, "html.parser")
     except Exception:  # noqa: BLE001 — malformed HTML 안전 가드
-        log.warning("parser.bs4_parse_failed", term=term_normalized)
+        log.warning("parser.bs4_parse_failed", term=term)
         return None
 
     ad_section = soup.find("ul", id=_AD_SECTION_ID)
     if ad_section is None:
-        log.info("parser.no_ad_section", term=term_normalized)
+        log.info("parser.no_ad_section", term=term)
         return None
 
     ad_items = ad_section.find_all("li", recursive=False)
     if not ad_items:
-        log.info("parser.no_ad_items", term=term_normalized)
+        log.info("parser.no_ad_items", term=term)
         return None
 
     for dom_index, li_tag in enumerate(ad_items, start=1):
         text = _normalize(li_tag.get_text(separator=" ", strip=True))
-        if _term_in_text(term_normalized, text):
-            rank = _resolve_rank(li_tag, dom_index, term_normalized)
-            log.info(
-                "parser.match_found",
-                term=term_normalized,
-                rank=rank,
-                dom_index=dom_index,
-            )
-            return rank
+        for label, candidate in candidates:
+            if _term_in_text(candidate, text):
+                rank = _resolve_rank(li_tag, dom_index, candidate)
+                log.info(
+                    "parser.match_found",
+                    term=term,
+                    matched_via=label,
+                    matched_value=candidate,
+                    rank=rank,
+                    dom_index=dom_index,
+                )
+                return rank
 
-    log.info("parser.no_match", term=term_normalized, candidates=len(ad_items))
+    log.info(
+        "parser.no_match",
+        term=term,
+        candidates=len(ad_items),
+        candidate_term_count=len(candidates),
+    )
     return None

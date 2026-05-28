@@ -2,10 +2,14 @@
 
 호출자가 ``write_transaction()`` (for mutations) 또는 ``get_connection()`` (for reads)으로
 connection 수명을 관리. site_id FK 검증은 SQLite ON DELETE RESTRICT에 위임.
+
+Story 1.10: aliases 컬럼 (TEXT JSON, default '[]'). Pydantic 모델이 Python list ↔ DB JSON
+변환을 담당하지만, INSERT/UPDATE 시 Python list → ``json.dumps`` 직렬화는 repository 책임.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from rank_bidder.db.models import Keyword, KeywordCreate, KeywordUpdate
@@ -18,10 +22,10 @@ def create(conn: sqlite3.Connection, payload: KeywordCreate) -> Keyword:
     conn.execute(
         f"""
         INSERT INTO {TABLE} (
-            id, site_id, term, target_rank, bid_cap, enabled, adgroup_id,
+            id, site_id, term, target_rank, bid_cap, enabled, adgroup_id, aliases,
             version, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))
         """,
         (
             payload.id,
@@ -31,6 +35,7 @@ def create(conn: sqlite3.Connection, payload: KeywordCreate) -> Keyword:
             payload.bid_cap,
             int(payload.enabled),
             payload.adgroup_id,
+            json.dumps(payload.aliases, ensure_ascii=False),
         ),
     )
     return _require_row(conn, payload.id)
@@ -82,6 +87,9 @@ def update(
     if payload.enabled is not None:
         set_parts.append("enabled = ?")
         set_params.append(int(payload.enabled))
+    if payload.aliases is not None:
+        set_parts.append("aliases = ?")
+        set_params.append(json.dumps(payload.aliases, ensure_ascii=False))
     if not set_parts:
         # no-op update — 그래도 version 검증은 필요 (stale client lost-update 차단).
         existing = get(conn, keyword_id)

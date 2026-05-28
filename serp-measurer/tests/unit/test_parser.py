@@ -122,3 +122,65 @@ def test_production_fixture_sujain_returns_one() -> None:
     html = _load_fixture("serp_2026_05_28_sujain.html")
     # production에서 r=1~5 광고 모두 "수자인" 단어경계 매치 가능 — 첫 슬롯 채택.
     assert extract_rank(html, "수자인") == 1
+
+
+# ---------------------------------------------------------------------------
+# Story 1.10 — aliases 매칭 (long-tail KW unlock)
+# ---------------------------------------------------------------------------
+
+
+def test_aliases_match_when_term_does_not(_caplog=None) -> None:
+    """term 자체는 광고 텍스트에 부재하지만 alias가 단어경계 매치 시 rank 반환.
+
+    sentinel 케이스 mirror: term="평택고덕동브레인시티비스타동원" + aliases=["수자인"]
+    (광고 텍스트에는 "수자인" 만 등장 가정) → rank 반환.
+    """
+    html = _load_fixture("serp_rank3.html")
+    # serp_rank3 광고 3슬롯에 "수자인" 단어 등장. term="없는키워드긴거" + alias "수자인" 매치.
+    assert extract_rank(html, "없는키워드긴거", aliases=["수자인"]) == 3
+
+
+def test_aliases_none_keeps_v1_behavior() -> None:
+    """aliases 부재(None) → term-only 동작. v1.4b backward-compat."""
+    html = _load_fixture("serp_rank1.html")
+    # term-only로 v1과 동일 결과.
+    assert extract_rank(html, "수자인") == 1
+    assert extract_rank(html, "수자인", aliases=None) == 1
+    assert extract_rank(html, "수자인", aliases=[]) == 1
+
+
+def test_aliases_term_takes_precedence_when_both_match() -> None:
+    """term + alias 둘 다 매치 가능한 광고에서, term이 candidate 리스트 첫째라 우선 매치."""
+    html = _load_fixture("serp_rank1.html")
+    # serp_rank1: rank=1 광고 텍스트 "수자인 더 좋은 아파트", rank=2 "아파트 분양 정보".
+    # term "아파트" + aliases ["수자인"]. rank=1 광고는 둘 다 매치 가능.
+    # candidate order = [term, alias1] → "아파트" 먼저 매치되지만, rank=1 광고에선
+    # 둘 다 가능하니 어느 쪽이 첫째인지로 rank 결정. rank=1.
+    assert extract_rank(html, "아파트", aliases=["수자인"]) == 1
+
+
+def test_aliases_only_first_matching_li_returns() -> None:
+    """alias가 rank=3 광고에만 있고 term이 어디에도 없으면 → rank=3."""
+    html = _load_fixture("serp_rank3.html")
+    assert extract_rank(html, "이런키워드없음", aliases=["수자인"]) == 3
+    # 단어경계 — 한글 substring 매치 거부 보존.
+    assert extract_rank(html, "이런키워드없음", aliases=["수자인플러스"]) is None
+
+
+def test_aliases_empty_after_normalize_returns_none() -> None:
+    """term 빈 + aliases가 normalize 후 모두 빈 → None (어떤 광고도 매치할 수 없음)."""
+    html = _load_fixture("serp_rank1.html")
+    assert extract_rank(html, "", aliases=["", "  "]) is None
+
+
+def test_aliases_dedupe_against_term() -> None:
+    """alias가 term과 동일하면 dedupe (중복 매칭 안 함). 결과는 term 매치와 동일."""
+    html = _load_fixture("serp_rank1.html")
+    assert extract_rank(html, "수자인", aliases=["수자인"]) == 1
+
+
+def test_aliases_non_string_items_ignored_silently() -> None:
+    """alias list에 non-str item(잘못된 payload) 섞여있으면 그 항목만 무시, str alias는 매치."""
+    html = _load_fixture("serp_rank3.html")
+    # 첫 alias=None (무시), 둘째 "수자인" 매치 → rank=3.
+    assert extract_rank(html, "없는단어", aliases=[None, "수자인"]) == 3  # type: ignore[list-item]

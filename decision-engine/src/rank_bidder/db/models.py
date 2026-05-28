@@ -3,10 +3,12 @@
 DB ↔ model 변환 규칙:
 - boolean: DB INTEGER 0/1 ↔ Python bool (field_validator mode='before')
 - datetime: SQLite ``datetime('now')`` → UTC-aware datetime
+- aliases (Story 1.10): DB TEXT(JSON) ↔ Python ``list[str]`` (field_validator mode='before')
 """
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -102,6 +104,38 @@ class SiteRead(Site):
 # ---------------------------------------------------------------------------
 
 
+def _decode_aliases_from_db(value: Any) -> Any:
+    """DB TEXT(JSON) → list[str] (Story 1.10 KeywordBase.aliases pre-validator)."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"aliases must be valid JSON: {exc}") from exc
+        if not isinstance(decoded, list):
+            raise ValueError("aliases JSON must decode to a list")
+        return decoded
+    return value
+
+
+def _normalize_aliases(value: list[Any]) -> list[str]:
+    """Post-decode validator — 각 alias str+strip+non-empty+≤200, 중복 거부."""
+    cleaned: list[str] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, str):
+            raise ValueError(f"aliases[{idx}] must be str (got {type(item).__name__})")
+        stripped = item.strip()
+        if not stripped:
+            raise ValueError(f"aliases[{idx}] must not be empty/whitespace")
+        if len(stripped) > 200:
+            raise ValueError(f"aliases[{idx}] too long ({len(stripped)} > 200)")
+        cleaned.append(stripped)
+    if len(cleaned) != len(set(cleaned)):
+        raise ValueError(f"duplicate aliases not allowed: {cleaned}")
+    return cleaned
+
+
 class KeywordBase(BaseModel):
     model_config = _BASE_CONFIG
 
@@ -109,11 +143,22 @@ class KeywordBase(BaseModel):
     target_rank: int = Field(ge=1, le=10)
     bid_cap: int = Field(ge=100, le=100000)
     enabled: bool = True
+    aliases: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("enabled", mode="before")
     @classmethod
     def _coerce_enabled(cls, v: Any) -> bool:
         return _to_bool(v)
+
+    @field_validator("aliases", mode="before")
+    @classmethod
+    def _coerce_aliases(cls, v: Any) -> Any:
+        return _decode_aliases_from_db(v)
+
+    @field_validator("aliases", mode="after")
+    @classmethod
+    def _validate_aliases(cls, v: list[Any]) -> list[str]:
+        return _normalize_aliases(v)
 
 
 class KeywordCreate(KeywordBase):
@@ -129,11 +174,19 @@ class KeywordUpdate(BaseModel):
     target_rank: int | None = Field(default=None, ge=1, le=10)
     bid_cap: int | None = Field(default=None, ge=100, le=100000)
     enabled: bool | None = None
+    aliases: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("enabled", mode="before")
     @classmethod
     def _coerce_enabled(cls, v: Any) -> bool | None:
         return None if v is None else _to_bool(v)
+
+    @field_validator("aliases", mode="after")
+    @classmethod
+    def _validate_aliases(cls, v: list[Any] | None) -> list[str] | None:
+        if v is None:
+            return None
+        return _normalize_aliases(v)
 
 
 class Keyword(KeywordBase):

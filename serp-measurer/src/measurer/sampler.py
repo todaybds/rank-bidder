@@ -25,12 +25,17 @@ from measurer.parser import extract_rank
 log = structlog.get_logger(__name__)
 
 
-def sample_keyword(term: str, samples_n: int) -> dict[str, Any]:
+def sample_keyword(
+    term: str,
+    samples_n: int,
+    aliases: list[str] | None = None,
+) -> dict[str, Any]:
     """키워드 1개를 ``samples_n`` 회 fetch + 다회 샘플링 채택.
 
     Args:
         term: 검색 키워드.
         samples_n: 샘플 횟수. AC1 검증된 범위 3-5.
+        aliases: Story 1.10 KW alias 후보 (광고 텍스트 변형 표현). None → term-only.
 
     Returns:
         dict 구조:
@@ -44,7 +49,7 @@ def sample_keyword(term: str, samples_n: int) -> dict[str, Any]:
 
     for sample_idx in range(samples_n):
         html, status = fetch_serp_html(term)
-        rank = extract_rank(html, term) if html else None
+        rank = extract_rank(html, term, aliases=aliases) if html else None
         samples.append(rank)
         log.info(
             "serp.fetched",

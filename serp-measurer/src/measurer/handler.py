@@ -30,6 +30,8 @@ MAX_KEYWORDS_PER_CALL = 50
 SAMPLES_N_MIN = 3
 SAMPLES_N_MAX = 5
 SAMPLES_N_DEFAULT = 3
+#: Story 1.10 — KW alias 최대 개수 (운영자 등록 부담 + parser 비용 cap).
+MAX_ALIASES_PER_KEYWORD = 20
 #: P1 (review 2026-05-27) — raw body 사이즈 한도. JSON 50 KW × term 평균 30B = 1.5KB 이론치.
 #: 여유 있게 256KB로. Function URL 한도(6MB) 한참 아래에서 미리 자른다.
 MAX_BODY_BYTES = 256 * 1024
@@ -131,6 +133,26 @@ def _validate_request(body: dict[str, Any]) -> tuple[list[dict[str, str]], int]:
         # 정규화된 값으로 덮어써서 downstream에서 일관 사용.
         kw["id"] = raw_id.strip()
         kw["term"] = raw_term.strip()
+        # Story 1.10: aliases optional list[str]. 부재 시 빈 list. 항목 strip+non-empty.
+        raw_aliases = kw.get("aliases")
+        if raw_aliases is None:
+            kw["aliases"] = []
+        elif isinstance(raw_aliases, list):
+            if len(raw_aliases) > MAX_ALIASES_PER_KEYWORD:
+                raise ValueError(
+                    f"keywords[{idx}].aliases too many "
+                    f"({len(raw_aliases)} > {MAX_ALIASES_PER_KEYWORD})"
+                )
+            cleaned: list[str] = []
+            for j, alias in enumerate(raw_aliases):
+                if not isinstance(alias, str) or not alias.strip():
+                    raise ValueError(
+                        f"keywords[{idx}].aliases[{j}] must be non-empty string"
+                    )
+                cleaned.append(alias.strip())
+            kw["aliases"] = cleaned
+        else:
+            raise ValueError(f"keywords[{idx}].aliases must be list of strings or omitted")
 
     # D1 (review 2026-05-27): samples_n=3.0 같은 JSON 정수 표기 float 수용.
     #   ``int(v) == v`` 통과 시 정수로 coerce, 외에는 거부. bool은 별도 거부.
@@ -249,7 +271,7 @@ def lambda_handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
     failure_count = 0
     for kw in keywords:
         try:
-            kw_result = sample_keyword(kw["term"], samples_n)
+            kw_result = sample_keyword(kw["term"], samples_n, aliases=kw.get("aliases", []))
         except Exception as exc:  # noqa: BLE001 — KW 단위 isolation
             log.error("sampler.unexpected_error", id=kw["id"], term=kw["term"], error=str(exc))
             kw_result = {

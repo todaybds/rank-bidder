@@ -36,9 +36,9 @@ def _patch_ssm():
 
 @pytest.fixture
 def _patch_sampler():
-    """sample_keyword → 결정적 happy result."""
+    """sample_keyword → 결정적 happy result. Story 1.10 aliases kwarg 수용."""
 
-    def _fake_sample(term: str, samples_n: int) -> dict[str, object]:
+    def _fake_sample(term: str, samples_n: int, aliases=None) -> dict[str, object]:
         return {
             "samples": [1] * samples_n,
             "chosen_rank": 1,
@@ -184,7 +184,7 @@ def test_happy_path_with_base64_encoded_body(_patch_ssm, _patch_sampler) -> None
 def test_sampler_exception_returns_per_keyword_measurement_failure(_patch_ssm) -> None:
     """예상 못한 sampler 예외도 keyword isolation — 전체 응답 200, errors[]에 박제."""
 
-    def _explode(term: str, samples_n: int) -> dict[str, object]:
+    def _explode(term: str, samples_n: int, aliases=None) -> dict[str, object]:
         raise RuntimeError(f"unexpected: {term}")
 
     payload = {"keywords": [{"id": "k1", "term": "수자인"}], "samples_n": 3}
@@ -210,3 +210,90 @@ def test_500_when_ssm_load_fails() -> None:
     assert response["statusCode"] == 500
     body = json.loads(response["body"])
     assert body["error"]["code"] == "INTERNAL_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# Story 1.10 — aliases optional payload field
+# ---------------------------------------------------------------------------
+
+
+def test_aliases_optional_payload_passthrough(_patch_ssm) -> None:
+    """aliases 포함한 payload → 200 + sampler가 aliases kwarg으로 받음."""
+    received_aliases: list = []
+
+    def _capture(term: str, samples_n: int, aliases=None) -> dict[str, object]:
+        received_aliases.append(aliases)
+        return {"samples": [1] * samples_n, "chosen_rank": 1, "latency_ms": 100}
+
+    payload = {
+        "keywords": [
+            {"id": "k1", "term": "평택고덕동브레인시티비스타동원",
+             "aliases": ["평택비스타동원", "브레인시티비스타동원"]},
+        ],
+        "samples_n": 3,
+    }
+    event = _event(_body(payload), headers={"x-auth-token": _EXPECTED_TOKEN})
+
+    with patch("measurer.handler.sample_keyword", side_effect=_capture):
+        response = lambda_handler(event, None)
+
+    assert response["statusCode"] == 200
+    assert received_aliases == [["평택비스타동원", "브레인시티비스타동원"]]
+
+
+def test_aliases_absent_passes_empty_list(_patch_ssm) -> None:
+    """aliases 부재 payload → sampler에 aliases=[] 전달 (term-only 동작)."""
+    received_aliases: list = []
+
+    def _capture(term: str, samples_n: int, aliases=None) -> dict[str, object]:
+        received_aliases.append(aliases)
+        return {"samples": [1] * samples_n, "chosen_rank": 1, "latency_ms": 100}
+
+    payload = {"keywords": [{"id": "k1", "term": "수자인"}], "samples_n": 3}
+    event = _event(_body(payload), headers={"x-auth-token": _EXPECTED_TOKEN})
+
+    with patch("measurer.handler.sample_keyword", side_effect=_capture):
+        response = lambda_handler(event, None)
+
+    assert response["statusCode"] == 200
+    assert received_aliases == [[]]
+
+
+def test_aliases_too_many_returns_400(_patch_ssm, _patch_sampler) -> None:
+    """aliases > 20 → 400 INVALID_REQUEST_BODY."""
+    payload = {
+        "keywords": [{"id": "k1", "term": "수자인", "aliases": [f"a{i}" for i in range(21)]}],
+        "samples_n": 3,
+    }
+    event = _event(_body(payload), headers={"x-auth-token": _EXPECTED_TOKEN})
+    response = lambda_handler(event, None)
+    assert response["statusCode"] == 400
+    body = json.loads(response["body"])
+    assert body["error"]["code"] == "INVALID_REQUEST_BODY"
+    assert "aliases" in body["error"]["message"].lower()
+
+
+def test_aliases_non_list_returns_400(_patch_ssm, _patch_sampler) -> None:
+    """aliases가 list가 아니면 → 400."""
+    payload = {
+        "keywords": [{"id": "k1", "term": "수자인", "aliases": "not-a-list"}],
+        "samples_n": 3,
+    }
+    event = _event(_body(payload), headers={"x-auth-token": _EXPECTED_TOKEN})
+    response = lambda_handler(event, None)
+    assert response["statusCode"] == 400
+    body = json.loads(response["body"])
+    assert body["error"]["code"] == "INVALID_REQUEST_BODY"
+
+
+def test_aliases_empty_string_item_returns_400(_patch_ssm, _patch_sampler) -> None:
+    """aliases 항목이 공백뿐이면 → 400."""
+    payload = {
+        "keywords": [{"id": "k1", "term": "수자인", "aliases": ["valid", "   "]}],
+        "samples_n": 3,
+    }
+    event = _event(_body(payload), headers={"x-auth-token": _EXPECTED_TOKEN})
+    response = lambda_handler(event, None)
+    assert response["statusCode"] == 400
+    body = json.loads(response["body"])
+    assert body["error"]["code"] == "INVALID_REQUEST_BODY"
