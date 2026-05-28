@@ -1,113 +1,296 @@
-/* Story 1.1 skeleton + Story 4.2 메인뷰 5위젯 스타일. */
+/* Story 4.2 dashboard — Seed Design 톤 차용 (2026-05-28).
+ * 참고: https://github.com/daangn/seed-design
+ *   - color: carrot primary + green/red semantic + yellow outlier
+ *   - typography: 단일 system font, regular/bold 두 단계
+ *   - card: 흰색 + 옅은 회색 테두리 + 작은 그림자
+ *   - radius: 8~12px (seed의 radius scale 참고)
+ */
+
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #222;
-  background: #fafafa;
+  /* ── color tokens (seed static palette 발췌) ────────────────────────── */
+  --color-bg: #f7f8f9;
+  --color-surface: #ffffff;
+  --color-border: #e5e7e9;
+  --color-border-strong: #d1d5db;
+
+  --color-text-primary: #212124;       /* gray-900 */
+  --color-text-secondary: #4d5358;
+  --color-text-muted: #8c92a0;
+  --color-text-on-primary: #ffffff;
+
+  --color-primary: #cc4700;            /* carrot-800 */
+  --color-primary-hover: #a83a00;
+  --color-primary-bg: #fff5f0;         /* carrot-50 */
+
+  --color-success: #008c72;            /* green-800 */
+  --color-success-bg: #e8faf6;         /* green-50 */
+
+  --color-danger: #e81300;             /* red-800 */
+  --color-danger-bg: #fff3f2;          /* red-50 */
+
+  --color-warning: #ba5e02;            /* yellow-800 */
+  --color-warning-bg: #fff7e6;         /* yellow-50 — outlier 강조 */
+
+  --color-info: #0a85b5;               /* blue-800 */
+  --color-info-bg: #ebf7fa;            /* blue-50 */
+
+  /* ── typography ──────────────────────────────────────────────────────── */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard",
+    "Noto Sans KR", "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --fs-caption: 0.75rem;     /* 12px */
+  --fs-body-sm: 0.8125rem;   /* 13px */
+  --fs-body: 0.9375rem;      /* 15px */
+  --fs-subtitle: 1rem;       /* 16px */
+  --fs-title-3: 1.125rem;    /* 18px */
+  --fs-title-2: 1.25rem;     /* 20px */
+  --fs-title-1: 1.5rem;      /* 24px */
+  --fs-display: 2.5rem;      /* 40px — big number */
+
+  --lh-tight: 1.35;
+  --lh-normal: 1.5;
+  --lh-loose: 1.62;
+
+  /* ── space + radius ──────────────────────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+
+  /* ── shadow ──────────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 2px rgba(33, 33, 36, 0.04), 0 1px 3px rgba(33, 33, 36, 0.06);
+  --shadow-card-hover: 0 4px 8px rgba(33, 33, 36, 0.06), 0 2px 4px rgba(33, 33, 36, 0.08);
+}
+
+/* ── 다크 모드는 본 세션 scope 밖. 추후 [data-theme="dark"] 분기 박제. ── */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  padding: 2rem;
-  max-width: 1200px;
+  padding: var(--space-8) var(--space-6);
+  max-width: 1280px;
   margin-inline: auto;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── header ──────────────────────────────────────────────────────────── */
 
 header h1 {
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--fs-title-1);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
 }
 
+header .muted,
 .muted {
-  color: #888;
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
 }
 
-/* ---------- Story 4.2 dashboard grid + widgets ---------- */
+header nav {
+  margin-top: var(--space-3);
+  font-size: var(--fs-body-sm);
+}
+
+header nav a {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  margin-right: var(--space-2);
+  border-bottom: 1px solid transparent;
+  padding-bottom: 1px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+header nav a:hover {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.actions {
+  margin-top: var(--space-5);
+}
+
+/* ── buttons ──────────────────────────────────────────────────────────── */
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:not(.link-button) {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-5);
+  font-weight: 600;
+  font-size: var(--fs-body-sm);
+  transition: background 120ms ease, transform 80ms ease;
+}
+
+button:not(.link-button):hover {
+  background: var(--color-primary-hover);
+}
+
+button:not(.link-button):active {
+  transform: translateY(1px);
+}
 
 .link-button {
   background: none;
   border: 0;
-  color: #2563eb;
+  color: var(--color-primary);
   cursor: pointer;
-  text-decoration: underline;
   padding: 0;
+  margin-left: var(--space-2);
   font: inherit;
+  font-size: var(--fs-body-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
+
+.link-button:hover {
+  color: var(--color-primary-hover);
+}
+
+/* ── dashboard grid + widgets ────────────────────────────────────────── */
 
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: var(--space-5);
+  margin-top: var(--space-6);
 }
 
 .widget {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 1.25rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 160ms ease;
+  min-height: 8rem;
+}
+
+.widget:hover {
+  box-shadow: var(--shadow-card-hover);
 }
 
 .widget h2 {
-  margin: 0 0 0.75rem 0;
-  font-size: 1.05rem;
-  color: #374151;
-  border-bottom: 1px solid #f3f4f6;
-  padding-bottom: 0.5rem;
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--fs-title-3);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .widget-body {
-  font-size: 0.9rem;
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-secondary);
   min-height: 4rem;
 }
 
 .widget-body .big-number {
-  font-size: 2.25rem;
-  font-weight: 600;
-  color: #111;
-  line-height: 1.2;
+  font-size: var(--fs-display);
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-top: var(--space-1);
+  font-variant-numeric: tabular-nums;
 }
 
 .widget-body .error {
-  color: #b91c1c;
-  background: #fef2f2;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.25rem;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
   margin: 0;
+  font-size: var(--fs-body-sm);
+  border-left: 3px solid var(--color-danger);
 }
+
+/* ── tables ──────────────────────────────────────────────────────────── */
 
 table.compact {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
+  margin-top: var(--space-3);
+  font-size: var(--fs-body-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 table.compact th {
   text-align: left;
   font-weight: 600;
-  color: #6b7280;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 0.35rem 0.5rem;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  text-transform: uppercase;
+  font-size: var(--fs-caption);
+  letter-spacing: 0.04em;
 }
 
 table.compact td {
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid #f3f4f6;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
 }
 
+table.compact tr:last-child td {
+  border-bottom: 0;
+}
+
+table.compact tr:hover td {
+  background: var(--color-bg);
+}
+
+/* outlier — yellow tint background, no border (seed 톤) */
 table.compact tr.outlier td {
-  background: #fffbeb;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
+table.compact tr.outlier:hover td {
+  background: #fff0d6;
+}
+
+/* up/down semantic colors */
 table.compact td.up {
-  color: #047857;
-  font-weight: 500;
+  color: var(--color-success);
+  font-weight: 600;
 }
 
 table.compact td.down {
-  color: #b91c1c;
-  font-weight: 500;
+  color: var(--color-danger);
+  font-weight: 600;
 }
+
+/* ── event list (system failures widget) ─────────────────────────────── */
 
 .event-list {
   list-style: none;
@@ -116,14 +299,123 @@ table.compact td.down {
 }
 
 .event-list li {
-  padding: 0.4rem 0;
-  border-bottom: 1px solid #f3f4f6;
-  font-size: 0.85rem;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-secondary);
+}
+
+.event-list li:last-child {
+  border-bottom: 0;
 }
 
 .event-list time {
-  color: #9ca3af;
-  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-size: var(--fs-caption);
   display: inline-block;
-  min-width: 12rem;
+  min-width: 11rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-list strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  margin-right: var(--space-2);
+}
+
+/* ── chat banner (Story 4.5) ─────────────────────────────────────────── */
+
+#chat-banner {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-left: 3px solid var(--color-warning);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-5);
+  font-size: var(--fs-body-sm);
+}
+
+#chat-banner.warning {
+  background: var(--color-warning-bg);
+}
+
+/* ── modal (import dialog) ───────────────────────────────────────────── */
+
+dialog {
+  border: 0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  box-shadow: 0 10px 32px rgba(33, 33, 36, 0.18);
+  min-width: 320px;
+}
+
+dialog::backdrop {
+  background: rgba(33, 33, 36, 0.4);
+}
+
+dialog h3 {
+  margin: 0 0 var(--space-3) 0;
+  font-size: var(--fs-title-3);
+  font-weight: 700;
+}
+
+dialog label {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-secondary);
+}
+
+dialog input {
+  display: block;
+  margin-top: var(--space-1);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--fs-body);
+  background: var(--color-surface);
+}
+
+dialog input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+dialog .actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}
+
+dialog button[value="cancel"] {
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+dialog button[value="cancel"]:hover {
+  background: var(--color-border);
+}
+
+/* ── responsive: 모바일 ─────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  body {
+    padding: var(--space-5) var(--space-4);
+  }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .widget {
+    padding: var(--space-5);
+  }
+  .event-list time {
+    display: block;
+    min-width: 0;
+    margin-bottom: 2px;
+  }
 }
