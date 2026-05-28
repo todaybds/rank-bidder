@@ -45,6 +45,7 @@ from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
 from rank_bidder.naver_sa.bid import put_bid as sa_put_bid
 from rank_bidder.naver_sa.estimate import average_position_bid
 from rank_bidder.naver_sa.exceptions import NaverKeywordDeleted, NaverSAError
+from rank_bidder.naver_sa.stats import fetch_today_avg_rank
 
 log = structlog.get_logger(__name__)
 
@@ -352,6 +353,34 @@ def _process_keyword_estimate(
     with get_connection() as conn:
         last_dec = decisions.list_for_keyword(conn, kw.id, limit=1)
     current_bid = last_dec[0].new_bid if last_dec else max(kw.bid_cap // 2, 100)
+
+    # 2026-05-28: Naver stats API로 오늘 평균 순위 (avgRnk) 측정.
+    # SERP 차단 무관(공식 API). measurement insert 박제로 대시보드 "현재 순위" 채워짐.
+    # 실패해도 결정 path는 계속 진행 (best-effort).
+    try:
+        today_avg_rank = fetch_today_avg_rank(kw.id)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        log.warning("cycle_estimate.stats_failed", keyword_id=kw.id, error=str(exc))
+        today_avg_rank = None
+
+    if today_avg_rank is not None:
+        rank_int = round(today_avg_rank)
+        with write_transaction() as conn:
+            measurements.insert(
+                conn,
+                MeasurementCreate(
+                    keyword_id=kw.id,
+                    rank_samples=[rank_int],
+                    rank_final=rank_int,
+                    current_bid=current_bid,
+                ),
+            )
+        log.info(
+            "cycle_estimate.rank_measured",
+            keyword_id=kw.id,
+            avg_rank=today_avg_rank,
+            rank_int=rank_int,
+        )
 
     # estimate API 호출 (Naver Public API, 차단 무관, 광고비 0)
     # 2026-05-28 POST fix: term + target_rank 박제 (Naver는 keyword 텍스트 기반).

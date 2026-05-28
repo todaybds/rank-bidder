@@ -78,16 +78,61 @@ def _extract_summary(body: Any) -> dict[str, Any] | None:
 
 
 def _normalize_stat(d: dict[str, Any]) -> dict[str, Any] | None:
-    """필요한 필드만 추출 + 안전 int 변환. 모두 부재면 None."""
+    """필요한 필드만 추출 + 안전 변환. 모두 부재면 None."""
     if not isinstance(d, dict):
         return None
-    keys = ("impCnt", "clkCnt", "salesAmt", "cpc", "ctr")
+    # int 변환 필드 + float 그대로 유지 필드 분리
+    int_keys = ("impCnt", "clkCnt", "salesAmt")
+    float_keys = ("cpc", "ctr", "avgRnk", "recentAvgRnk")
     out: dict[str, Any] = {}
-    for k in keys:
+    for k in int_keys:
         if k in d:
             v = d[k]
             if isinstance(v, bool):
                 continue
             if isinstance(v, (int, float)):
-                out[k] = v if k in ("cpc", "ctr") else int(v)
+                out[k] = int(v)
+    for k in float_keys:
+        if k in d:
+            v = d[k]
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, (int, float)):
+                out[k] = float(v)
     return out if out else None
+
+
+def fetch_today_avg_rank(
+    naver_id: str,
+    *,
+    client: httpx.Client | None = None,
+) -> float | None:
+    """2026-05-28 — 오늘 평균 순위 (avgRnk, Double) 즉시 조회.
+
+    Naver 공식 API라 SERP 차단 무관. cycle_full_estimate가 매 cycle 호출해서
+    measurement insert에 활용 (rank_final = round(avgRnk)).
+
+    Args:
+        naver_id: nccKeywordId / nccAdgroupId.
+        client: 테스트용.
+
+    Returns:
+        ``float`` (예: 1.7) 또는 ``None`` (데이터 없음 / 응답 파싱 실패).
+    """
+    if not naver_id or not isinstance(naver_id, str):
+        raise ValueError(f"naver_id must be a non-empty string, got {naver_id!r}")
+    params = {
+        "id": naver_id,
+        "fields": json.dumps(["avgRnk"]),
+        "timeIncrement": "summary",
+        "datePreset": "today",
+    }
+    _, body = call_with_retry("GET", "/stats", params=params, client=client)
+    stat = _extract_summary(body)
+    if stat is None:
+        return None
+    avg = stat.get("avgRnk")
+    if avg is None or avg == 0:
+        # avgRnk=0 = Naver 데이터 없음 (오늘 노출 0 또는 통계 미집계)
+        return None
+    return float(avg)
