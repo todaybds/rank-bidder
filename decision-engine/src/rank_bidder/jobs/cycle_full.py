@@ -354,8 +354,9 @@ def _process_keyword_estimate(
     current_bid = last_dec[0].new_bid if last_dec else max(kw.bid_cap // 2, 100)
 
     # estimate API 호출 (Naver Public API, 차단 무관, 광고비 0)
+    # 2026-05-28 POST fix: term + target_rank 박제 (Naver는 keyword 텍스트 기반).
     try:
-        estimate_bid = average_position_bid(kw.id, kw.target_rank)
+        estimate_bid = average_position_bid(kw.id, kw.term, kw.target_rank)
     except NaverKeywordDeleted:
         log.warning("cycle_estimate.naver_deleted_on_estimate", keyword_id=kw.id)
         with write_transaction() as conn:

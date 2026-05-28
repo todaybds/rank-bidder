@@ -206,6 +206,8 @@ def _http_call(
             return c.get(uri, params=params, headers=headers)
         if method == "PUT":
             return c.put(uri, params=params, json=json_body, headers=headers)
+        if method == "POST":
+            return c.post(uri, params=params, json=json_body, headers=headers)
         raise ValueError(f"unsupported method: {method}")
 
     if client is not None:
