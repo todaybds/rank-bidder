@@ -1,14 +1,19 @@
-# Caddyfile — Story 4.1 (FR-25, D7·D8·D29)
+# Caddyfile — Story 4.1 (FR-25, D7·D8·D29) + Story 4.2 dashboard static 서빙 (2026-05-28).
 #
-# rank-bidder.duckdns.org → uvicorn 127.0.0.1:8000 reverse proxy.
-# Let's Encrypt 자동 인증서 (TLS 자동). Bearer 토큰 검증은 uvicorn 측 미들웨어가 처리
-# (Caddy는 통과만 — Bearer 헤더 통째 forward).
+# rank-bidder.duckdns.org:
+#   - /api/*, /health, /docs/*, /openapi.json → uvicorn 127.0.0.1:8000 reverse proxy
+#   - / 및 *.html, /static/*, /robots.txt → dashboard/public 정적 서빙 (Story 4.2)
+#   - /caddy-up → Caddy 자체 응답 ("ok")
+#
+# Bearer 토큰 검증은 uvicorn auth.bearer 미들웨어 (Caddy는 헤더 통째 forward).
+# 정적 파일은 인증 없이 누구나 접근 가능 — 단 META robots noindex + dashboard JS가
+# fetch 시 인증 토큰 박제 (env.js 또는 localStorage). 토큰 노출 위험은 별도 박제.
 #
 # 적용 전 외부 셋업:
-#   1. DuckDNS A record: rank-bidder.duckdns.org → Oracle VM public IPv4.
-#   2. 80/443 ingress: Oracle Cloud Security List + iptables OPEN.
+#   1. DuckDNS A record: rank-bidder.duckdns.org → GCP VM public IPv4.
+#   2. 80/443 ingress: GCP firewall + iptables OPEN.
 #   3. systemd: `sudo systemctl enable --now caddy rank-bidder-api`.
-#   4. `RANKBIDDER_AUTH_TOKEN` env: SSM Parameter Store + /opt/rank-bidder/.env 동기화.
+#   4. `RANKBIDDER_AUTH_TOKEN` env: /opt/rank-bidder/.env.
 
 rank-bidder.duckdns.org {
     encode gzip zstd
@@ -21,14 +26,24 @@ rank-bidder.duckdns.org {
         format json
     }
 
-    # health probe — Caddy 자체 health (Bearer 미요구, uvicorn /health 통과)
+    # Caddy 자체 health probe (uvicorn 의존 안 함).
     handle /caddy-up {
         respond "ok" 200
     }
 
-    # 모든 트래픽 reverse proxy. Bearer 검증은 uvicorn auth.bearer 미들웨어.
-    reverse_proxy 127.0.0.1:8000 {
-        header_up X-Forwarded-Proto https
-        header_up X-Forwarded-Host {host}
+    # API + docs + health → uvicorn reverse proxy.
+    @api path /api/* /health /docs /docs/* /openapi.json /redoc /redoc/*
+    handle @api {
+        reverse_proxy 127.0.0.1:8000 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # 그 외 (/, /index.html, /system.html, /policies.html, /static/*, /robots.txt)
+    # → dashboard/public 정적 서빙 (Story 4.2).
+    handle {
+        root * /opt/rank-bidder/dashboard/public
+        file_server
     }
 }
