@@ -1,13 +1,27 @@
-"""SERP HTML parser — 파워링크 영역 + ``li[data-index]`` 기반 rank 추출.
+"""SERP HTML parser v2 — ``<ul id="power_link_body">`` + onclick ``r=N`` 기반 rank 추출.
 
-**중요한 금지 사항 (Research §Mobile SERP):**
-``sds-comps-*``, ``sc-*``, 6자 hash-based 자동 생성 클래스 직접 매칭 금지 —
-Naver는 수개월마다 클래스명을 로테이션한다. 본 파서는 다음 두 신호에만 의존한다:
+**v1 폐기 (2026-05-28)**: v1은 "파워링크" 텍스트 앵커 + ``<li data-index>`` 두 신호에
+의존했으나, 2026-05-28 production 검증 시 m.search.naver.com SERP 응답에 두 신호
+모두 부재 (광고 5개 노출 상태에서 "파워링크" 0회 / ``data-index`` 0회). cycle_full
+3회 연속 measurement 100% null. 즉 Naver가 광고 영역 마크업을 교체.
 
-1. **텍스트 앵커** — 페이지에 "파워링크" 단어 존재 + ``li[data-index]`` 의 ancestor section/ul 안에도 동일 앵커 (P1 section-scoped, 2026-05-27 review).
-2. **``data-*`` 속성** — ``<li data-index="N">`` 항목 (광고 슬롯).
+**v2 신호 (2026-05-28 production 검증)**:
 
-v1은 단일 전략 + 빈결과율 알림(Epic 6 별도 story). v2에서 multi-strategy fallback 도입 예정.
+1. **광고 컨테이너 ID** — ``<ul id="power_link_body" class="lst_total">`` (전체 페이지에
+   정확히 1회 등장). 이 element가 파워링크 광고 list의 root.
+2. **광고 단위** — 위 ``ul`` 의 direct ``<li>`` children. li class 는
+   ``["bx", ...]`` 패턴 (``bx`` 가 공통 접두 class, 나머지는 광고 layout variant).
+3. **순위 cross-check** — 각 li 안의 ``<a onclick="...">`` 에 다음 패턴 박힘:
+   ``a=pwl.tit&r=<RANK>&i=nad-<ad_id>``. DOM-order 순서(1-based)와 onclick ``r=`` 값이
+   일치해야 신뢰. 불일치 시 onclick ``r=`` 값을 채택하고 warn (Naver 영역 마크업이
+   re-ordering 됐을 가능성).
+
+**term 매칭**: v1과 동일하게 단어경계(``re`` lookahead/lookbehind) 안에서만. 한글
+글자 사이 끼인 substring 매치 거부 (P0 review 2026-05-27 패턴 유지).
+
+**v3 (future) — multi-strategy fallback**: ``power_link_body`` 부재 시 ``a=pwl.tit&r=``
+onclick 전수 스캔 후 ancestor ``<li>`` reverse-lookup 등의 보조 전략. 현재 v2는
+단일 전략 + 빈결과율 알림(Epic 6 별도 story).
 """
 
 from __future__ import annotations
@@ -20,11 +34,13 @@ from bs4 import BeautifulSoup
 
 log = structlog.get_logger(__name__)
 
-#: 광고 영역 식별 텍스트 앵커.
-_AD_SECTION_TEXT_ANCHOR = "파워링크"
+#: 광고 list root element ID — production 안정 anchor (2026-05-28 검증).
+_AD_SECTION_ID = "power_link_body"
+
+#: onclick attribute 안 rank 박제 패턴 — ``a=pwl.tit&r=<rank>&i=nad-<id>``.
+_ONCLICK_RANK_RE = re.compile(r"a=pwl\.tit&r=(\d+)&i=(nad-[A-Za-z0-9_-]+)")
 
 #: 한글/영숫자 단어경계 (P0 review 2026-05-27 — 한글 false positive 차단).
-#: term이 한글/영숫자 글자 사이에 끼어 있으면 매치 거부.
 _WORD_CHAR = r"[A-Za-z0-9가-힣]"
 
 
@@ -48,39 +64,44 @@ def _term_in_text(term: str, text: str) -> bool:
     return re.search(pattern, text) is not None
 
 
-def _is_in_ad_section(li_tag: object) -> bool:
-    """``li`` 의 가까운 ancestor(section/ul/div)에 '파워링크' 앵커가 있는지 확인.
+def _resolve_rank(li_tag: object, dom_index: int, term: str) -> int:
+    """DOM 순서(1-based)와 onclick ``r=`` 값을 cross-check 후 채택 rank 반환.
 
-    P1 review (2026-05-27): page-global anchor만 보면 푸터/도움말의 '파워링크 안내'
-    텍스트로도 통과해 false positive 발생. ancestor 범위를 좁혀 광고 영역에서
-    발견된 ``data-index`` li만 채택.
+    둘이 일치하면 그 값, 불일치하면 onclick ``r=`` 값을 채택(광고 영역 내 명시적
+    rank 신호가 DOM 순서보다 강하다)하고 warn 로그. onclick 신호 없으면 DOM 순서.
     """
-    for ancestor in li_tag.parents:  # type: ignore[attr-defined]
-        name = getattr(ancestor, "name", None)
-        if name in (None, "html", "body"):
-            return False
-        if name not in ("section", "ul", "div"):
-            continue
-        ancestor_text = ancestor.get_text(" ", strip=True)
-        if _AD_SECTION_TEXT_ANCHOR in ancestor_text:
-            return True
-    return False
+    onclick_anchor = li_tag.find("a", onclick=True)  # type: ignore[attr-defined]
+    if onclick_anchor is None:
+        return dom_index
+    match = _ONCLICK_RANK_RE.search(onclick_anchor.get("onclick", ""))
+    if match is None:
+        return dom_index
+    onclick_rank = int(match.group(1))
+    if onclick_rank != dom_index:
+        log.warning(
+            "parser.rank_mismatch",
+            term=term,
+            dom_index=dom_index,
+            onclick_rank=onclick_rank,
+            nad_id=match.group(2),
+        )
+    return onclick_rank
 
 
 def extract_rank(html: str | None, term: str) -> int | None:
-    """SERP HTML에서 ``term`` 일치 광고의 1-based rank 추출.
+    """SERP HTML에서 ``term`` 일치 광고의 1-based rank 추출 (v2).
 
     Args:
         html: SERP HTML 전체 (``http_client.fetch_serp_html`` 출력).
         term: 검색 키워드. 광고 항목 텍스트에 단어경계 안에서 매치되는 첫 항목 채택.
 
     Returns:
-        매치 항목의 1-based 순위(파워링크 영역 내 ``data-index`` 정렬 기준).
+        매치 항목의 1-based 순위 — onclick ``r=`` 값 우선, 부재 시 DOM 순서.
         다음 경우 None:
           - ``html`` 이 None 또는 빈 문자열
           - ``term`` 이 빈 문자열 / 공백뿐
-          - 페이지에 "파워링크" 텍스트 없음
-          - 광고 영역에 ``li[data-index]`` 항목 없음
+          - ``<ul id="power_link_body">`` 부재 (광고 영역 없음 OR 마크업 변경)
+          - 광고 영역에 ``<li>`` direct child 없음
           - 어떤 광고 항목 텍스트에도 ``term`` 단어경계 매치 없음
     """
     if not html or not term or not term.strip():
@@ -90,60 +111,33 @@ def extract_rank(html: str | None, term: str) -> int | None:
     if not term_normalized:
         return None
 
-    soup = BeautifulSoup(html, "html.parser")
-
-    # 광고 영역 page-global 앵커 (1차 가드).
-    if _AD_SECTION_TEXT_ANCHOR not in soup.get_text():
-        log.info("parser.no_ad_section_anchor", term=term_normalized)
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:  # noqa: BLE001 — malformed HTML 안전 가드
+        log.warning("parser.bs4_parse_failed", term=term_normalized)
         return None
 
-    # data-index 있는 모든 li 후보.
-    candidate_items = soup.find_all("li", attrs={"data-index": True})
-    if not candidate_items:
-        log.info("parser.no_data_index_items", term=term_normalized)
+    ad_section = soup.find("ul", id=_AD_SECTION_ID)
+    if ad_section is None:
+        log.info("parser.no_ad_section", term=term_normalized)
         return None
 
-    # P1: section-scoped 가드 (ancestor section/ul/div에 파워링크 앵커 있는 것만).
-    ad_items = [li for li in candidate_items if _is_in_ad_section(li)]
+    ad_items = ad_section.find_all("li", recursive=False)
     if not ad_items:
-        log.info(
-            "parser.no_ad_section_scoped_items",
-            term=term_normalized,
-            page_candidates=len(candidate_items),
-        )
+        log.info("parser.no_ad_items", term=term_normalized)
         return None
 
-    # P1: 비숫자 data-index는 drop + warn (sentinel 10_000 silent corruption 차단).
-    items_with_keys: list[tuple[int, object]] = []
-    dropped = 0
-    for li in ad_items:
-        raw = li.get("data-index")  # type: ignore[union-attr]
-        try:
-            key = int(raw)
-        except (TypeError, ValueError):
-            dropped += 1
-            continue
-        items_with_keys.append((key, li))
-
-    if dropped:
-        log.warning("parser.dropped_invalid_data_index", term=term_normalized, dropped=dropped)
-
-    if not items_with_keys:
-        log.info("parser.no_int_data_index_items", term=term_normalized)
-        return None
-
-    items_with_keys.sort(key=lambda t: t[0])
-
-    for rank_one_based, (_key, li_tag) in enumerate(items_with_keys, start=1):
-        text = _normalize(li_tag.get_text(separator=" ", strip=True))  # type: ignore[attr-defined]
+    for dom_index, li_tag in enumerate(ad_items, start=1):
+        text = _normalize(li_tag.get_text(separator=" ", strip=True))
         if _term_in_text(term_normalized, text):
+            rank = _resolve_rank(li_tag, dom_index, term_normalized)
             log.info(
                 "parser.match_found",
                 term=term_normalized,
-                rank=rank_one_based,
-                data_index=li_tag.get("data-index"),  # type: ignore[attr-defined]
+                rank=rank,
+                dom_index=dom_index,
             )
-            return rank_one_based
+            return rank
 
-    log.info("parser.no_match", term=term_normalized, candidates=len(items_with_keys))
+    log.info("parser.no_match", term=term_normalized, candidates=len(ad_items))
     return None
