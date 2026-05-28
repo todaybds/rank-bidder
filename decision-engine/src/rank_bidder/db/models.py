@@ -120,19 +120,29 @@ def _decode_aliases_from_db(value: Any) -> Any:
 
 
 def _normalize_aliases(value: list[Any]) -> list[str]:
-    """Post-decode validator — 각 alias str+strip+non-empty+≤200, 중복 거부."""
+    """Post-decode validator — 각 alias str+strip+NFC+non-empty+≤200, 중복 거부.
+
+    Story 1.10 review patch (2026-05-28): NFC 정규화를 DB 박제 시점에 적용한다.
+    parser ``_normalize`` 도 NFC 적용하므로 무관해 보이지만, DB 일관성(dashboard
+    검색 / 운영자 grep / future SELECT WHERE term=?) 차원에서 모든 alias bytes를
+    NFC로 통일한다. macOS 클립보드/IME가 NFD로 보내는 한글 입력도 박제 시점에 NFC.
+    """
+    import unicodedata
+
     cleaned: list[str] = []
     for idx, item in enumerate(value):
         if not isinstance(item, str):
             raise ValueError(f"aliases[{idx}] must be str (got {type(item).__name__})")
-        stripped = item.strip()
+        stripped = unicodedata.normalize("NFC", item.strip())
         if not stripped:
             raise ValueError(f"aliases[{idx}] must not be empty/whitespace")
         if len(stripped) > 200:
             raise ValueError(f"aliases[{idx}] too long ({len(stripped)} > 200)")
         cleaned.append(stripped)
     if len(cleaned) != len(set(cleaned)):
-        raise ValueError(f"duplicate aliases not allowed: {cleaned}")
+        # Story 1.10 review patch: PII 회피 위해 raw alias 노출하지 않고 index만.
+        dups = [i for i, a in enumerate(cleaned) if cleaned.count(a) > 1]
+        raise ValueError(f"duplicate aliases not allowed at indices {sorted(set(dups))}")
     return cleaned
 
 

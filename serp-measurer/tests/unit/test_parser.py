@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from measurer.parser import extract_rank
+from structlog.testing import capture_logs
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -86,6 +87,33 @@ def test_onclick_rank_preferred_over_dom_order() -> None:
     </body></html>
     """
     assert extract_rank(html, "수자인") == 3
+
+
+def test_onclick_rank_mismatch_emits_warning_log() -> None:
+    """AC3 review patch — DOM-order ≠ onclick r= 시 parser.rank_mismatch warning 박제 검증.
+
+    회귀 방어: structlog warn 콜이 silent drop되면 production drift 진단 신호 끊김.
+    """
+    html = """
+    <html><body>
+      <ul id="power_link_body">
+        <li class="bx">
+          <a href="#" onclick='return goOtherCR(this,"a=pwl.tit&amp;r=5&amp;i=nad-x-1&amp;d=")'>
+            <span>수자인 광고</span>
+          </a>
+        </li>
+      </ul>
+    </body></html>
+    """
+    with capture_logs() as cap:
+        result = extract_rank(html, "수자인")
+    assert result == 5
+    warnings = [e for e in cap if e.get("event") == "parser.rank_mismatch"]
+    assert len(warnings) == 1, f"expected 1 parser.rank_mismatch event, got: {cap}"
+    w = warnings[0]
+    assert w["dom_index"] == 1
+    assert w["onclick_rank"] == 5
+    assert w["nad_id"] == "nad-x-1"
 
 
 def test_onclick_missing_falls_back_to_dom_order() -> None:
