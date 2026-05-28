@@ -69,13 +69,15 @@ def measure_keywords(
         aliases = kw.get("aliases") or None
         if not kw_id or not term:
             log.warning("serp_local.invalid_kw", kw=kw)
-            results.append({
-                "id": kw_id or "",
-                "samples": [],
-                "chosen_rank": None,
-                "latency_ms": 0,
-                "errors": [{"code": "INVALID_KEYWORD", "message": "id/term missing"}],
-            })
+            results.append(
+                {
+                    "id": kw_id or "",
+                    "samples": [],
+                    "chosen_rank": None,
+                    "latency_ms": 0,
+                    "errors": [{"code": "INVALID_KEYWORD", "message": "id/term missing"}],
+                }
+            )
             continue
         sample_result = sample_keyword(term, samples_n, aliases=aliases)
         sample_result["id"] = kw_id

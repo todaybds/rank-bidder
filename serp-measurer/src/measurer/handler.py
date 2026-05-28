@@ -146,9 +146,7 @@ def _validate_request(body: dict[str, Any]) -> tuple[list[dict[str, str]], int]:
             cleaned: list[str] = []
             for j, alias in enumerate(raw_aliases):
                 if not isinstance(alias, str) or not alias.strip():
-                    raise ValueError(
-                        f"keywords[{idx}].aliases[{j}] must be non-empty string"
-                    )
+                    raise ValueError(f"keywords[{idx}].aliases[{j}] must be non-empty string")
                 cleaned.append(alias.strip())
             kw["aliases"] = cleaned
         else:

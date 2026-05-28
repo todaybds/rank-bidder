@@ -227,8 +227,11 @@ def test_aliases_optional_payload_passthrough(_patch_ssm) -> None:
 
     payload = {
         "keywords": [
-            {"id": "k1", "term": "평택고덕동브레인시티비스타동원",
-             "aliases": ["평택비스타동원", "브레인시티비스타동원"]},
+            {
+                "id": "k1",
+                "term": "평택고덕동브레인시티비스타동원",
+                "aliases": ["평택비스타동원", "브레인시티비스타동원"],
+            },
         ],
         "samples_n": 3,
     }

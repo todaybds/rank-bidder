@@ -28,7 +28,9 @@ def test_create_aliases_default_empty_list(seeded_site: str) -> None:
     with write_transaction() as conn:
         kw = keywords.create(
             conn,
-            KeywordCreate(id="kw-no-alias", site_id=seeded_site, term="t", target_rank=1, bid_cap=1000),
+            KeywordCreate(
+                id="kw-no-alias", site_id=seeded_site, term="t", target_rank=1, bid_cap=1000
+            ),
         )
     assert kw.aliases == []
     with get_connection() as conn:
@@ -80,7 +82,11 @@ def test_create_aliases_rejects_empty_string() -> None:
     """alias가 빈 문자열/공백뿐 → ValidationError."""
     with pytest.raises(ValidationError):
         KeywordCreate(
-            id="kw-x", site_id="s1", term="t", target_rank=1, bid_cap=1000,
+            id="kw-x",
+            site_id="s1",
+            term="t",
+            target_rank=1,
+            bid_cap=1000,
             aliases=["valid", "   "],
         )
 
@@ -89,7 +95,11 @@ def test_create_aliases_rejects_duplicates() -> None:
     """동일 alias 2회 → ValidationError."""
     with pytest.raises(ValidationError):
         KeywordCreate(
-            id="kw-x", site_id="s1", term="t", target_rank=1, bid_cap=1000,
+            id="kw-x",
+            site_id="s1",
+            term="t",
+            target_rank=1,
+            bid_cap=1000,
             aliases=["dup", "dup"],
         )
 
@@ -98,7 +108,11 @@ def test_create_aliases_rejects_over_20() -> None:
     """alias 21개 → ValidationError (Field max_length=20)."""
     with pytest.raises(ValidationError):
         KeywordCreate(
-            id="kw-x", site_id="s1", term="t", target_rank=1, bid_cap=1000,
+            id="kw-x",
+            site_id="s1",
+            term="t",
+            target_rank=1,
+            bid_cap=1000,
             aliases=[f"a{i}" for i in range(21)],
         )
 
@@ -107,7 +121,11 @@ def test_create_aliases_rejects_non_string_items() -> None:
     """alias 항목이 str이 아니면 → ValidationError."""
     with pytest.raises(ValidationError):
         KeywordCreate(
-            id="kw-x", site_id="s1", term="t", target_rank=1, bid_cap=1000,
+            id="kw-x",
+            site_id="s1",
+            term="t",
+            target_rank=1,
+            bid_cap=1000,
             aliases=["ok", 123],  # type: ignore[list-item]
         )
 
@@ -118,7 +136,11 @@ def test_update_aliases_replaces_existing(seeded_site: str) -> None:
         keywords.create(
             conn,
             KeywordCreate(
-                id="kw-up", site_id=seeded_site, term="t", target_rank=1, bid_cap=1000,
+                id="kw-up",
+                site_id=seeded_site,
+                term="t",
+                target_rank=1,
+                bid_cap=1000,
                 aliases=["old1", "old2"],
             ),
         )
@@ -139,13 +161,18 @@ def test_update_aliases_none_preserves_existing(seeded_site: str) -> None:
         keywords.create(
             conn,
             KeywordCreate(
-                id="kw-pres", site_id=seeded_site, term="t", target_rank=1, bid_cap=1000,
+                id="kw-pres",
+                site_id=seeded_site,
+                term="t",
+                target_rank=1,
+                bid_cap=1000,
                 aliases=["keep1", "keep2"],
             ),
         )
     with write_transaction() as conn:
         updated = keywords.update(
-            conn, "kw-pres",
+            conn,
+            "kw-pres",
             KeywordUpdate(term="changed", aliases=None),
             expected_version=0,
         )
@@ -159,12 +186,19 @@ def test_update_aliases_empty_list_clears(seeded_site: str) -> None:
         keywords.create(
             conn,
             KeywordCreate(
-                id="kw-clr", site_id=seeded_site, term="t", target_rank=1, bid_cap=1000,
+                id="kw-clr",
+                site_id=seeded_site,
+                term="t",
+                target_rank=1,
+                bid_cap=1000,
                 aliases=["a", "b"],
             ),
         )
     with write_transaction() as conn:
         updated = keywords.update(
-            conn, "kw-clr", KeywordUpdate(aliases=[]), expected_version=0,
+            conn,
+            "kw-clr",
+            KeywordUpdate(aliases=[]),
+            expected_version=0,
         )
     assert updated.aliases == []

@@ -59,8 +59,8 @@ def test_measure_keywords_calls_sample_per_kw_and_attaches_id() -> None:
 
 def test_measure_keywords_invalid_kw_returns_error_box() -> None:
     keywords = [
-        {"id": "", "term": "수자인"},     # id 비어있음
-        {"id": "kw-X", "term": ""},        # term 비어있음
+        {"id": "", "term": "수자인"},  # id 비어있음
+        {"id": "kw-X", "term": ""},  # term 비어있음
         {"id": "kw-OK", "term": "비스타동원"},
     ]
     with patch(

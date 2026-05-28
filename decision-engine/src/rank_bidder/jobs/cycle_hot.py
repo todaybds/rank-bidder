@@ -31,10 +31,7 @@ def run_hot_cycle(samples_n: int = 3) -> dict[str, int]:
 
         try:
             results = measure_keywords(
-                [
-                    {"id": kw.id, "term": kw.term, "aliases": kw.aliases}
-                    for kw in enabled_kws
-                ],
+                [{"id": kw.id, "term": kw.term, "aliases": kw.aliases} for kw in enabled_kws],
                 samples_n=samples_n,
             )
         except LambdaClientError as exc:
