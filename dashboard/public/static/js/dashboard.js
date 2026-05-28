@@ -119,6 +119,8 @@ function rankDisplay(observed, target) {
 
 let keywordsCache = [];
 let selected = new Set();
+// 정렬 상태: column 키 + asc/desc. null이면 default (enabled DESC + bid_cap DESC).
+let sortState = { col: null, dir: "asc" };
 
 function setText(id, text) {
   const el = document.getElementById(id);
@@ -143,11 +145,26 @@ function renderSummary(metricsData) {
 function filteredKeywords() {
   const q = (document.getElementById("kw-search")?.value || "").trim().toLowerCase();
   const showDisabled = document.getElementById("show-disabled")?.checked;
-  return keywordsCache.filter((k) => {
+  let items = keywordsCache.filter((k) => {
     if (!showDisabled && !k.enabled) return false;
     if (q && !(k.term || "").toLowerCase().includes(q)) return false;
     return true;
   });
+  // 정렬
+  if (sortState.col) {
+    const col = sortState.col;
+    const dir = sortState.dir === "asc" ? 1 : -1;
+    items = [...items].sort((a, b) => {
+      const av = a[col];
+      const bv = b[col];
+      // null은 항상 맨 뒤
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av).localeCompare(String(bv), "ko") * dir;
+    });
+  }
+  return items;
 }
 
 function renderKeywords() {
@@ -339,7 +356,52 @@ async function submitBulkEdit() {
   const target = document.getElementById("bulk-target").value.trim();
   const cap = document.getElementById("bulk-cap").value.trim();
   const enabledRaw = document.getElementById("bulk-enabled").value;
-  const body = { keyword_ids: Array.from(selected) };
+  const multRaw = document.getElementById("bulk-cap-multiplier").value.trim();
+  const resultEl = document.getElementById("bulk-result");
+  const ids = Array.from(selected);
+
+  // 비율 변경 경로 — KW마다 다른 값이라 개별 PATCH N회.
+  if (multRaw) {
+    const mult = Number(multRaw);
+    if (!Number.isFinite(mult) || mult <= 0 || mult > 10) {
+      resultEl.textContent = "배수는 0.1~10 사이";
+      return;
+    }
+    if (!confirm(`선택한 ${ids.length}개 KW의 최대입찰가에 × ${mult} 적용. 진행?`)) return;
+    resultEl.textContent = `비율 변경 처리 중… 0/${ids.length}`;
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      const kw = keywordsCache.find((k) => k.id === id);
+      if (!kw) {
+        fail++;
+        continue;
+      }
+      const raw = Math.max(100, Math.min(100000, Math.floor((kw.bid_cap * mult) / 100) * 100));
+      try {
+        const resp = await fetch(`${API_BASE}/api/v1/keywords/${id}`, {
+          method: "PATCH",
+          headers: authHeaders(),
+          body: JSON.stringify({ bid_cap: raw, if_match_version: kw.version }),
+        });
+        if (resp.ok) ok++;
+        else fail++;
+      } catch {
+        fail++;
+      }
+      resultEl.textContent = `비율 변경 처리 중… ${ok + fail}/${ids.length}`;
+    }
+    resultEl.textContent = `완료 — 변경 ${ok}개, 실패 ${fail}개`;
+    selected.clear();
+    setTimeout(() => {
+      document.getElementById("bulk-edit-modal").close();
+      refreshAll();
+    }, 1000);
+    return;
+  }
+
+  // 절대값 일괄
+  const body = { keyword_ids: ids };
   if (target) body.target_rank = Number(target);
   if (cap) body.bid_cap = Number(cap);
   if (enabledRaw === "true") body.enabled = true;
@@ -349,10 +411,10 @@ async function submitBulkEdit() {
     body.bid_cap === undefined &&
     body.enabled === undefined
   ) {
-    document.getElementById("bulk-result").textContent = "최소 1개 필드 입력 필요";
+    resultEl.textContent = "최소 1개 필드 입력 필요 (또는 배수 입력)";
     return;
   }
-  document.getElementById("bulk-result").textContent = "처리 중…";
+  resultEl.textContent = "처리 중…";
   try {
     const resp = await fetch(`${API_BASE}/api/v1/keywords/bulk-update`, {
       method: "POST",
@@ -361,20 +423,90 @@ async function submitBulkEdit() {
     });
     const j = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      document.getElementById("bulk-result").textContent =
-        `실패: ${j?.detail?.error?.code || resp.status}`;
+      resultEl.textContent = `실패: ${j?.detail?.error?.code || resp.status}`;
       return;
     }
-    document.getElementById("bulk-result").textContent =
-      `완료 — 변경 ${j.updated}개, 실패 ${j.failed?.length ?? 0}개`;
+    resultEl.textContent = `완료 — 변경 ${j.updated}개, 실패 ${j.failed?.length ?? 0}개`;
     selected.clear();
     setTimeout(() => {
       document.getElementById("bulk-edit-modal").close();
       refreshAll();
     }, 800);
   } catch (e) {
-    document.getElementById("bulk-result").textContent = `네트워크 오류: ${e.message}`;
+    resultEl.textContent = `네트워크 오류: ${e.message}`;
   }
+}
+
+// ── CSV export ──────────────────────────────────────────────────
+
+function exportCsv() {
+  const items = filteredKeywords();
+  if (!items.length) {
+    alert("내보낼 키워드 없음 (검색/필터 결과 비어있음).");
+    return;
+  }
+  const header = [
+    "키워드",
+    "사이트",
+    "활성",
+    "목표순위",
+    "현재순위",
+    "현재입찰가",
+    "직전입찰가",
+    "최대입찰가",
+    "최근결정",
+    "최근사유",
+    "최근입찰변경",
+  ];
+  const rows = items.map((k) => [
+    k.term,
+    k.site_id,
+    k.enabled ? "ON" : "OFF",
+    k.target_rank,
+    k.rank_observed ?? "",
+    k.current_bid ?? "",
+    k.previous_bid ?? "",
+    k.bid_cap,
+    k.last_decision ?? "",
+    (k.last_reason ?? "").replace(/[\r\n]/g, " "),
+    k.last_put_at ?? "",
+  ]);
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  // BOM 박제 (Excel 한글 깨짐 차단)
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  a.href = url;
+  a.download = `rank-bidder-keywords-${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── 헤더 정렬 ──────────────────────────────────────────────────
+
+function setupSortHandlers() {
+  document.querySelectorAll(".bw-keywords-table th.sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      const col = th.dataset.sort;
+      if (sortState.col === col) {
+        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+      } else {
+        sortState.col = col;
+        sortState.dir = "asc";
+      }
+      // 모든 헤더 indicator 갱신
+      document.querySelectorAll(".bw-keywords-table th.sortable").forEach((h) => {
+        h.classList.remove("bw-sort-asc", "bw-sort-desc");
+      });
+      th.classList.add(sortState.dir === "asc" ? "bw-sort-asc" : "bw-sort-desc");
+      renderKeywords();
+    });
+  });
 }
 
 // ── 이벤트 위임 ─────────────────────────────────────────────────
@@ -414,9 +546,14 @@ document.getElementById("btn-bulk-edit")?.addEventListener("click", () => {
   document.getElementById("bulk-target").value = "";
   document.getElementById("bulk-cap").value = "";
   document.getElementById("bulk-enabled").value = "";
+  document.getElementById("bulk-cap-multiplier").value = "";
   document.getElementById("bulk-result").textContent = "";
   document.getElementById("bulk-edit-modal").showModal();
 });
+
+document.getElementById("btn-export-csv")?.addEventListener("click", () => exportCsv());
+
+setupSortHandlers();
 
 document.getElementById("bulk-submit")?.addEventListener("click", () => submitBulkEdit());
 

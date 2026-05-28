@@ -84,6 +84,7 @@
             <button id="btn-bulk-edit" type="button" class="bw-btn-secondary" disabled>
               선택 일괄변경 <span id="selected-count">(0)</span>
             </button>
+            <button id="btn-export-csv" type="button" class="bw-btn-secondary">CSV 내보내기</button>
             <input
               type="search"
               id="kw-search"
@@ -100,14 +101,18 @@
                 <th class="check">
                   <input type="checkbox" id="select-all" />
                 </th>
-                <th class="num">No</th>
-                <th>키워드</th>
-                <th class="num">순위<br /><span class="muted-small">현재 / 목표</span></th>
-                <th class="num">입찰가<br /><span class="muted-small">현재 ▲▼변동</span></th>
-                <th class="num editable-th">최대<br />입찰가</th>
-                <th>결정</th>
+                <th class="num sortable" data-sort="idx">No</th>
+                <th class="sortable" data-sort="term">키워드</th>
+                <th class="num sortable" data-sort="target_rank">
+                  순위<br /><span class="muted-small">현재 / 목표</span>
+                </th>
+                <th class="num sortable" data-sort="current_bid">
+                  입찰가<br /><span class="muted-small">현재 ▲▼변동</span>
+                </th>
+                <th class="num editable-th sortable" data-sort="bid_cap">최대<br />입찰가</th>
+                <th class="sortable" data-sort="last_decision">결정</th>
                 <th>사유</th>
-                <th class="num">최근 입찰<br />변경</th>
+                <th class="num sortable" data-sort="last_put_at">최근 입찰<br />변경</th>
                 <th class="check">ON</th>
               </tr>
             </thead>
@@ -130,22 +135,52 @@
         <form method="dialog">
           <h3>선택 KW 일괄변경 <span id="bulk-count" class="muted"></span></h3>
           <p class="muted">변경할 필드만 입력. 빈 칸은 보존.</p>
-          <label>
-            목표순위 (1~10):
-            <input id="bulk-target" type="number" min="1" max="10" placeholder="변경 안 함" />
-          </label>
-          <label>
-            최대입찰가 (100~100,000원):
-            <input id="bulk-cap" type="number" min="100" max="100000" step="100" placeholder="변경 안 함" />
-          </label>
-          <label>
-            활성 상태:
-            <select id="bulk-enabled">
-              <option value="">변경 안 함</option>
-              <option value="true">활성 (ON)</option>
-              <option value="false">비활성 (OFF)</option>
-            </select>
-          </label>
+
+          <fieldset class="bw-fieldset">
+            <legend>📌 절대값으로 일괄 변경</legend>
+            <label>
+              목표순위 (1~10):
+              <input id="bulk-target" type="number" min="1" max="10" placeholder="변경 안 함" />
+            </label>
+            <label>
+              최대입찰가 (100~100,000원):
+              <input
+                id="bulk-cap"
+                type="number"
+                min="100"
+                max="100000"
+                step="100"
+                placeholder="변경 안 함"
+              />
+            </label>
+            <label>
+              활성 상태:
+              <select id="bulk-enabled">
+                <option value="">변경 안 함</option>
+                <option value="true">활성 (ON)</option>
+                <option value="false">비활성 (OFF)</option>
+              </select>
+            </label>
+          </fieldset>
+
+          <fieldset class="bw-fieldset">
+            <legend>📊 비율로 최대입찰가 조정 (보라웨어 패턴)</legend>
+            <p class="muted">
+              KW별 현재 최대입찰가에 적용. 예: 1.5 = 50% 인상, 0.8 = 20% 인하. 100원 단위로 floor.
+            </p>
+            <label>
+              최대입찰가 배수:
+              <input
+                id="bulk-cap-multiplier"
+                type="number"
+                min="0.1"
+                max="10"
+                step="0.05"
+                placeholder="예: 1.5 (변경 안 함이면 빈 칸)"
+              />
+            </label>
+          </fieldset>
+
           <div class="actions">
             <button id="bulk-submit" type="button">일괄 변경</button>
             <button value="cancel" type="submit">취소</button>
