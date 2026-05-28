@@ -73,39 +73,86 @@
 
       <section class="bw-keywords-section">
         <div class="bw-keywords-header">
-          <h3>활성 키워드 <span class="bw-kw-count" id="kw-count">—</span></h3>
-          <input
-            type="search"
-            id="kw-search"
-            placeholder="키워드 검색…"
-            class="bw-search"
-            autocomplete="off"
-          />
+          <div class="bw-kw-header-left">
+            <h3>키워드 <span class="bw-kw-count" id="kw-count">—</span></h3>
+            <label class="bw-filter-toggle">
+              <input type="checkbox" id="show-disabled" />
+              비활성 포함
+            </label>
+          </div>
+          <div class="bw-kw-header-right">
+            <button id="btn-bulk-edit" type="button" class="bw-btn-secondary" disabled>
+              선택 일괄변경 <span id="selected-count">(0)</span>
+            </button>
+            <input
+              type="search"
+              id="kw-search"
+              placeholder="키워드 검색…"
+              class="bw-search"
+              autocomplete="off"
+            />
+          </div>
         </div>
         <div class="bw-table-wrap">
           <table class="bw-keywords-table">
             <thead>
               <tr>
+                <th class="check">
+                  <input type="checkbox" id="select-all" />
+                </th>
                 <th class="num">No</th>
                 <th>키워드</th>
-                <th class="num">목표<br />순위</th>
+                <th class="num editable-th">목표<br />순위</th>
                 <th class="num">현재<br />입찰가</th>
-                <th class="num">최대<br />입찰가</th>
+                <th class="num editable-th">최대<br />입찰가</th>
                 <th>최근 결정</th>
                 <th>최근 결정 사유</th>
                 <th class="num">시각</th>
+                <th class="check">ON</th>
               </tr>
             </thead>
             <tbody id="kw-tbody">
               <tr>
-                <td colspan="8" class="muted" style="padding: 1.5rem; text-align: center;">
+                <td colspan="10" class="muted" style="padding: 1.5rem; text-align: center;">
                   로딩 중…
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p class="bw-table-hint muted">
+          💡 <strong>목표순위</strong> / <strong>최대입찰가</strong> 셀 클릭 → 즉시 편집.
+          체크박스로 여러 KW 선택 후 "선택 일괄변경" 가능.
+        </p>
       </section>
+
+      <dialog id="bulk-edit-modal">
+        <form method="dialog">
+          <h3>선택 KW 일괄변경 <span id="bulk-count" class="muted"></span></h3>
+          <p class="muted">변경할 필드만 입력. 빈 칸은 보존.</p>
+          <label>
+            목표순위 (1~10):
+            <input id="bulk-target" type="number" min="1" max="10" placeholder="변경 안 함" />
+          </label>
+          <label>
+            최대입찰가 (100~100,000원):
+            <input id="bulk-cap" type="number" min="100" max="100000" step="100" placeholder="변경 안 함" />
+          </label>
+          <label>
+            활성 상태:
+            <select id="bulk-enabled">
+              <option value="">변경 안 함</option>
+              <option value="true">활성 (ON)</option>
+              <option value="false">비활성 (OFF)</option>
+            </select>
+          </label>
+          <div class="actions">
+            <button id="bulk-submit" type="button">일괄 변경</button>
+            <button value="cancel" type="submit">취소</button>
+          </div>
+          <p id="bulk-result" class="muted"></p>
+        </form>
+      </dialog>
 
       <details class="bw-failures" id="failures-section">
         <summary>최근 24시간 시스템 장애 <span id="failures-count">—</span></summary>

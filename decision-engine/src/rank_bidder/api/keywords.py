@@ -99,6 +99,134 @@ class ToggleResponse(BaseModel):
     version: int
 
 
+class KeywordPatchRequest(BaseModel):
+    """개별 편집 — 부분 업데이트. None이면 보존."""
+
+    target_rank: int | None = Field(default=None, ge=1, le=10)
+    bid_cap: int | None = Field(default=None, ge=100, le=100000)
+    enabled: bool | None = None
+    if_match_version: int = Field(ge=0)
+
+
+class KeywordPatchResponse(BaseModel):
+    id: str
+    target_rank: int
+    bid_cap: int
+    enabled: bool
+    version: int
+
+
+@router.patch("/{keyword_id}", response_model=KeywordPatchResponse)
+def patch_keyword(keyword_id: str, req: KeywordPatchRequest) -> KeywordPatchResponse:
+    """KW 부분 업데이트 — target_rank/bid_cap/enabled. D5 version mismatch → 409."""
+    payload = KeywordUpdate(
+        target_rank=req.target_rank,
+        bid_cap=req.bid_cap,
+        enabled=req.enabled,
+    )
+    try:
+        with write_transaction() as conn:
+            updated = keywords.update(
+                conn,
+                keyword_id,
+                payload,
+                expected_version=req.if_match_version,
+            )
+    except VersionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": {
+                    "code": "VERSION_MISMATCH",
+                    "expected_version": req.if_match_version,
+                    "current_version": exc.current_version,
+                }
+            },
+        ) from exc
+    log.info(
+        "keywords.patch.applied",
+        keyword_id=keyword_id,
+        target_rank=req.target_rank,
+        bid_cap=req.bid_cap,
+        enabled=req.enabled,
+        new_version=updated.version,
+    )
+    return KeywordPatchResponse(
+        id=updated.id,
+        target_rank=updated.target_rank,
+        bid_cap=updated.bid_cap,
+        enabled=updated.enabled,
+        version=updated.version,
+    )
+
+
+class BulkUpdateRequest(BaseModel):
+    """선택 KW 일괄 편집 — version 검증 없음 (보라웨어 패턴: 일괄은 force update).
+
+    field=None → 해당 필드 변경 안 함. 최소 1개 필드 필수.
+    """
+
+    keyword_ids: list[str] = Field(min_length=1, max_length=500)
+    target_rank: int | None = Field(default=None, ge=1, le=10)
+    bid_cap: int | None = Field(default=None, ge=100, le=100000)
+    enabled: bool | None = None
+
+
+class BulkUpdateResponse(BaseModel):
+    updated: int
+    failed: list[dict]
+
+
+@router.post("/bulk-update", response_model=BulkUpdateResponse)
+def bulk_update(req: BulkUpdateRequest) -> BulkUpdateResponse:
+    """선택 KW 일괄 편집 — 각 KW 개별 transaction (1건 실패가 전체 안 막음).
+
+    version mismatch는 force overwrite (보라웨어 일괄 변경 패턴 = 운영자 의도 우선).
+    """
+    if req.target_rank is None and req.bid_cap is None and req.enabled is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": "NO_FIELDS",
+                    "message": "최소 1개 필드 (target_rank/bid_cap/enabled)",
+                },
+            },
+        )
+
+    payload = KeywordUpdate(
+        target_rank=req.target_rank,
+        bid_cap=req.bid_cap,
+        enabled=req.enabled,
+    )
+    updated = 0
+    failed: list[dict] = []
+    for kw_id in req.keyword_ids:
+        try:
+            with write_transaction() as conn:
+                # current version 가져와서 그걸로 expected — force update.
+                current = keywords.get(conn, kw_id)
+                if current is None:
+                    failed.append({"id": kw_id, "error": "NOT_FOUND"})
+                    continue
+                keywords.update(conn, kw_id, payload, expected_version=current.version)
+                updated += 1
+        except Exception as exc:  # noqa: BLE001 — KW 단위 격리
+            log.warning("keywords.bulk.kw_failed", keyword_id=kw_id, error=str(exc))
+            failed.append({"id": kw_id, "error": str(exc)[:120]})
+
+    log.info(
+        "keywords.bulk.applied",
+        total=len(req.keyword_ids),
+        updated=updated,
+        failed=len(failed),
+        target_rank=req.target_rank,
+        bid_cap=req.bid_cap,
+        enabled=req.enabled,
+    )
+    return BulkUpdateResponse(updated=updated, failed=failed)
+
+
 @router.post("/{keyword_id}/toggle", response_model=ToggleResponse)
 def toggle_keyword(keyword_id: str, req: ToggleRequest) -> ToggleResponse:
     """KW enabled 토글. version mismatch → 409 envelope."""

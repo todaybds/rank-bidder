@@ -398,6 +398,113 @@ body.bw-layout {
   font-size: var(--fs-caption);
 }
 
+/* ── inline edit + checkbox + bulk button ────────────────────────── */
+
+.bw-kw-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.bw-kw-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bw-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.bw-btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 600;
+  font-size: var(--fs-body-sm);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.bw-btn-secondary:not(:disabled):hover {
+  background: var(--color-primary-bg);
+}
+
+.bw-btn-secondary:disabled {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.bw-keywords-table th.check,
+.bw-keywords-table td.check {
+  width: 2.5rem;
+  text-align: center;
+  padding: var(--space-2);
+}
+
+.bw-keywords-table th.check input,
+.bw-keywords-table td.check input {
+  cursor: pointer;
+  width: 1rem;
+  height: 1rem;
+}
+
+.bw-keywords-table th.editable-th {
+  position: relative;
+}
+
+.bw-keywords-table th.editable-th::after {
+  content: " ✎";
+  color: var(--color-primary);
+  font-size: 0.75em;
+  margin-left: 2px;
+}
+
+.bw-keywords-table td.editable {
+  cursor: pointer;
+  position: relative;
+}
+
+.bw-keywords-table td.editable:hover {
+  background: var(--color-primary-bg) !important;
+  outline: 1px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+.bw-inline-input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--fs-body-sm);
+  text-align: right;
+  background: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.bw-inline-input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.bw-table-hint {
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  background: #fafbfc;
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+
 /* ── badges ──────────────────────────────────────────────────────── */
 
 .bw-badge {
