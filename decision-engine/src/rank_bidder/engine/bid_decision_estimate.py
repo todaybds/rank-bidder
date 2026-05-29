@@ -155,3 +155,103 @@ def decide_by_estimate(
         old_bid=current_bid,
         reason=reason,
     )
+
+
+def decide_by_rank(
+    *,
+    avg_rank: float,
+    target_rank: int,
+    current_bid: int,
+    bid_cap: int,
+    step_pct: float = DEFAULT_STEP_PCT,
+) -> DecisionOutcome:
+    """Closed-loop 결정 — 측정된 실제 평균순위(avgRnk) 기반 (2026-05-29).
+
+    사용자 최종 목표 = "측정된 순위가 목표에 도달할 때까지 24/7 자동 입찰"의 **핵심 path**.
+    estimate API 추정가가 아니라 **네이버 공식 통계 avgRnk(실측 평균순위)** 를 제어 신호로
+    BID_UP/DOWN/HOLD 결정. 2026-05-28 과입찰 사태(이미 1~2위인 KW를 estimate만 보고 cap까지
+    밀어올림)의 근본 해법 — 측정값을 결정에 직접 반영.
+
+    Args:
+        avg_rank: 측정된 평균순위 (>0). **신뢰 가능 표본** = caller가 impCnt>=30 보장
+            (``fetch_today_avg_rank``가 None 반환 시 caller는 estimate fallback 사용).
+        target_rank: 목표 순위 [1,10]. 작을수록 상위.
+        current_bid: 현재 입찰가 (KRW, ≥ 0).
+        bid_cap: 상한선 (FR-2).
+        step_pct: 점진 조정폭 (디폴트 5%).
+
+    정책:
+        - ``current_bid > cap`` → 즉시 BID_DOWN clip (운영자 cap 인하 반영) — 공통 안전 박제.
+        - ``round(avg_rank) == target`` → HOLD (도달, 변동 없음).
+        - ``round(avg_rank) > target`` (목표보다 하위) → BID_UP 5% (cap clip + NOOP guard).
+        - ``round(avg_rank) < target`` (목표보다 상위 = 과달성) → BID_DOWN 5% (광고비 절약).
+
+    ⚠️ avgRnk는 일중 누적 평균이라 lagging 신호 — 점진 5% step이 oscillation을 완충.
+       실시간(초 단위) 순위가 아님(네이버 SERP 차단으로 불가). 공식 통계 기반 near-real-time.
+    """
+    effective_cap = round_100(bid_cap)
+
+    # 1. cap clip-down — 운영자 mid-cycle cap 인하 즉시 반영 (공통 안전 박제).
+    if current_bid > effective_cap:
+        return DecisionOutcome(
+            decision="BID_DOWN",
+            new_bid=effective_cap,
+            old_bid=current_bid,
+            reason=f"CAP_CLIP_DOWN ({current_bid} > cap {bid_cap} → {effective_cap})",
+        )
+
+    rank_int = round(avg_rank)
+
+    # 2. 목표 도달 → HOLD (변동 없음).
+    if rank_int == target_rank:
+        return DecisionOutcome(
+            decision="HOLD",
+            new_bid=current_bid,
+            old_bid=current_bid,
+            reason=f"AT_TARGET (measured rank {avg_rank:.1f} ≈ target {target_rank})",
+        )
+
+    # 3. 과달성 (실측 순위가 목표보다 상위) → 광고비 절약 BID_DOWN 5%.
+    if rank_int < target_rank:
+        candidate = round_100(current_bid * (1 - step_pct))
+        reason = f"OVER_TARGET cost-save (measured rank {avg_rank:.1f} < target {target_rank})"
+        if candidate == NAVER_BID_UNIT and int(current_bid * (1 - step_pct)) < NAVER_BID_UNIT:
+            reason = "BID_DOWN_FLOORED at 100"
+        return DecisionOutcome(
+            decision="BID_DOWN",
+            new_bid=candidate,
+            old_bid=current_bid,
+            reason=reason,
+        )
+
+    # 4. 목표 미달 (실측 순위가 목표보다 하위) → BID_UP 5% 점진.
+    if current_bid >= effective_cap:
+        return DecisionOutcome(
+            decision="CAP_REACHED",
+            new_bid=current_bid,
+            old_bid=current_bid,
+            reason=(
+                f"CAP_REACHED at {effective_cap} "
+                f"(measured rank {avg_rank:.1f} > target {target_rank}, cap 도달)"
+            ),
+        )
+    candidate = round_100(current_bid * (1 + step_pct))
+    # BID_UP_NOOP guard — 작은 bid의 5% 인상이 round_100으로 current와 동일하면 강제 +100원.
+    if candidate <= current_bid:
+        candidate = current_bid + NAVER_BID_UNIT
+    if candidate >= effective_cap:
+        return DecisionOutcome(
+            decision="BID_UP",
+            new_bid=effective_cap,
+            old_bid=current_bid,
+            reason=(
+                f"BID_UP_CAPPED at {effective_cap} "
+                f"(measured rank {avg_rank:.1f} > target {target_rank})"
+            ),
+        )
+    return DecisionOutcome(
+        decision="BID_UP",
+        new_bid=candidate,
+        old_bid=current_bid,
+        reason=f"BID_UP (measured rank {avg_rank:.1f} > target {target_rank})",
+    )

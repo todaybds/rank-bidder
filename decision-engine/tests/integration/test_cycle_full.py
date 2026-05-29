@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from rank_bidder.db.connection import get_connection, write_transaction
 from rank_bidder.db.models import KeywordCreate, SiteCreate
 from rank_bidder.db.repositories import decisions, keywords, sites
@@ -24,6 +25,16 @@ SITE_ID = "s1"
 KW1_ID = "kw1"
 KW2_ID = "kw2"
 ADG_ID = "grp-a001"
+
+
+@pytest.fixture(autouse=True)
+def _force_serp_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """본 파일은 SERP(Lambda mock) 경로 검증 — 명시적으로 serp 모드 고정.
+
+    2026-05-29: ``run_cycle`` 기본 모드가 estimate(avgRnk closed-loop)로 바뀌어,
+    SERP 경로를 타려면 RANKBIDDER_CYCLE_MODE=serp 명시 필요.
+    """
+    monkeypatch.setenv("RANKBIDDER_CYCLE_MODE", "serp")
 
 
 def _seed(db_path: Path) -> None:

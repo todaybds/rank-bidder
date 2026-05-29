@@ -131,6 +131,9 @@ sudo install -d -o rank-bidder -m 0755 /var/lib/rank-bidder
 #   RANKBIDDER_AUTH_TOKEN=<openssl rand -base64 48>
 #   RANKBIDDER_DASHBOARD_ORIGIN=https://<vercel-project>.vercel.app  ← CORS allow (code-review H5)
 #   RANKBIDDER_ENV=prod
+#   RANKBIDDER_CYCLE_MODE=estimate   ← 입찰 결정 모드. estimate=avgRnk closed-loop(운영 디폴트).
+#                                       serp=Lambda SERP fetch(현재 네이버 차단). 코드 기본값도
+#                                       estimate라 누락돼도 안전하지만 의도 명시 위해 박제 권장.
 #   RANKBIDDER_NAVER_SA_API_KEY=<...>
 #   RANKBIDDER_NAVER_SA_SECRET_KEY=<...>
 #   RANKBIDDER_NAVER_SA_CUSTOMER_ID=<...>

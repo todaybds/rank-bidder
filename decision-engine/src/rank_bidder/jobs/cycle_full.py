@@ -38,7 +38,7 @@ from rank_bidder.db.repositories import (
     runtime_config,
 )
 from rank_bidder.engine import bid_decision, cap_race, new_cycle_id, recovery, state_machine
-from rank_bidder.engine.bid_decision_estimate import decide_by_estimate
+from rank_bidder.engine.bid_decision_estimate import decide_by_estimate, decide_by_rank
 from rank_bidder.engine.exceptions import FinalGuardFailedError
 from rank_bidder.engine.policy_eval import effective_settings
 from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
@@ -49,22 +49,30 @@ from rank_bidder.naver_sa.stats import fetch_today_avg_rank
 
 log = structlog.get_logger(__name__)
 
-#: 2026-05-28 — Naver IP "검색 endpoint sticky 차단" 대응. estimate mode가 새 디폴트.
-#: SERP 차단 풀리면 RANKBIDDER_CYCLE_MODE=serp로 되돌릴 수 있음. test 환경에선 기본 serp
-#: (integration test가 measure_keywords mock 기반이라 호환).
-CYCLE_MODE = os.environ.get("RANKBIDDER_CYCLE_MODE", "serp").strip().lower()
+#: 2026-05-29 — 기본 모드 = estimate (avgRnk closed-loop). 2026-05-28 Naver SERP 검색
+#: endpoint sticky 차단으로 SERP 측정 불가 → estimate/avgRnk path가 운영 디폴트.
+#: 차단이 풀려 SERP로 되돌리려면 ``RANKBIDDER_CYCLE_MODE=serp`` 명시.
+#: ⚠️ 디폴트를 estimate로 박은 이유: 이전 디폴트 "serp"는 차단된 경로라, 운영 .env에
+#: 변수 누락 시 재배포 때 조용히 먹통이 됨 (2026-05-29 검증에서 식별된 설정 취약성).
+#: SERP 경로 의존 integration test는 명시적으로 RANKBIDDER_CYCLE_MODE=serp 주입.
+_DEFAULT_CYCLE_MODE = "estimate"
+
+
+def _cycle_mode() -> str:
+    """현재 cycle 모드를 **호출 시점에** env에서 해석 (모듈 import 시점 고정 회피)."""
+    return os.environ.get("RANKBIDDER_CYCLE_MODE", _DEFAULT_CYCLE_MODE).strip().lower()
 
 
 def run_cycle(samples_n: int = 3) -> dict[str, int]:
     """5분 풀 사이클 1회 실행. CLI/systemd 진입점.
 
-    2026-05-28 박제: ``RANKBIDDER_CYCLE_MODE=estimate`` (Naver IP 차단 대응) 시
-    estimate API 기반 분기로 위임. ``serp`` (기본) 시 기존 Lambda/VM-local fetch 흐름.
+    ``RANKBIDDER_CYCLE_MODE=estimate`` (기본) → avgRnk closed-loop + estimate fallback path.
+    ``RANKBIDDER_CYCLE_MODE=serp`` → 기존 Lambda/VM-local SERP fetch 흐름 (현재 차단 상태).
 
     Returns:
         요약 dict {scanned, committed, failed, skipped}.
     """
-    if CYCLE_MODE == "estimate":
+    if _cycle_mode() == "estimate":
         return run_cycle_estimate()
     cycle_id = new_cycle_id()
     bind_contextvars(cycle_id=cycle_id, job="cycle_full")
@@ -354,9 +362,9 @@ def _process_keyword_estimate(
         last_dec = decisions.list_for_keyword(conn, kw.id, limit=1)
     current_bid = last_dec[0].new_bid if last_dec else max(kw.bid_cap // 2, 100)
 
-    # 2026-05-28: Naver stats API로 오늘 평균 순위 (avgRnk + impCnt) 측정.
-    # SERP 차단 무관(공식 API). impCnt < 30이면 통계 왜곡 차단(None).
-    # 실패해도 결정 path는 계속 진행 (best-effort).
+    # Naver stats API로 오늘 평균 순위 (avgRnk + impCnt) 측정. SERP 차단 무관(공식 API).
+    # impCnt < 30이면 통계 왜곡 차단(None). 실패해도 결정 path는 계속 진행 (best-effort).
+    rank_int: int | None = None
     try:
         today_avg_rank, today_imp = fetch_today_avg_rank(kw.id)
     except Exception as exc:  # noqa: BLE001 — best-effort
@@ -391,8 +399,11 @@ def _process_keyword_estimate(
             reason="impressions < 30" if today_imp > 0 else "no_data",
         )
 
-    # estimate API 호출 (Naver Public API, 차단 무관, 광고비 0)
+    # estimate API 호출 (Naver Public API, 차단 무관, 광고비 0) — avgRnk(실측)가 없을 때
+    # fallback 신호 + 대시보드 recommended_cap 표시용. best-effort: 실패해도 avgRnk path는 진행.
     # 2026-05-28 POST fix: term + target_rank 박제 (Naver는 keyword 텍스트 기반).
+    estimate_bid: int | None = None
+    estimate_error = False
     try:
         estimate_bid = average_position_bid(kw.id, kw.term, kw.target_rank)
     except NaverKeywordDeleted:
@@ -413,7 +424,12 @@ def _process_keyword_estimate(
         summary["failed"] += 1
         return
     except NaverSAError as exc:
+        # 2026-05-29: estimate 실패가 avgRnk closed-loop을 막지 않도록 best-effort 처리.
         log.warning("cycle_estimate.estimate_failed", keyword_id=kw.id, error=str(exc))
+        estimate_error = True
+
+    # avgRnk(실측)도 없고 estimate도 못 받음 → 신호 0 → FAILED (돈 안 씀).
+    if today_avg_rank is None and estimate_bid is None and estimate_error:
         with write_transaction() as conn:
             cycle_entries.upsert(
                 conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=kw.id, state="FAILED")
@@ -421,17 +437,34 @@ def _process_keyword_estimate(
         summary["failed"] += 1
         return
 
-    # 정책 평가 + 결정
+    # 정책 평가
     now = datetime.now(UTC)
     with get_connection() as conn:
         eff = effective_settings(conn, kw, now)
 
-    outcome = decide_by_estimate(
-        estimate_bid=estimate_bid,
-        target_rank=eff.target_rank,
-        current_bid=current_bid,
-        bid_cap=eff.bid_cap,
-    )
+    # 결정 — avgRnk(실측 순위)가 신뢰 가능하면 closed-loop(decide_by_rank), 아니면 estimate
+    # fallback. 2026-05-29 과입찰 근본 해법: 측정된 순위가 목표 이상이면 BID_UP 안 함.
+    if today_avg_rank is not None:
+        outcome = decide_by_rank(
+            avg_rank=today_avg_rank,
+            target_rank=eff.target_rank,
+            current_bid=current_bid,
+            bid_cap=eff.bid_cap,
+        )
+        # 대시보드 recommended_cap 유지 위해 estimate 추정가를 reason에 부기.
+        decision_reason = f"[rank:{today_avg_rank:.1f}] {outcome.reason}" + (
+            f" (estimate {estimate_bid})" if estimate_bid is not None else ""
+        )
+        decision_rank_observed = rank_int
+    else:
+        outcome = decide_by_estimate(
+            estimate_bid=estimate_bid,
+            target_rank=eff.target_rank,
+            current_bid=current_bid,
+            bid_cap=eff.bid_cap,
+        )
+        decision_reason = f"[estimate:{estimate_bid}] {outcome.reason}"
+        decision_rank_observed = None
 
     # Story 4.5 general_bid_paused 가드 (기존 정책 그대로)
     if outcome.decision in ("BID_UP", "BID_DOWN"):
@@ -444,6 +477,7 @@ def _process_keyword_estimate(
                 old_bid=outcome.old_bid,
                 reason=f"SYSTEM_PAUSED — would have {outcome.decision} to {outcome.new_bid}",
             )
+            decision_reason = outcome.reason
 
     # estimate mode는 MEASURED 단계 생략 → cycle_entries 직접 DECIDED upsert.
     with write_transaction() as conn:
@@ -458,8 +492,8 @@ def _process_keyword_estimate(
                 decision=outcome.decision,
                 old_bid=outcome.old_bid,
                 new_bid=outcome.new_bid,
-                rank_observed=None,  # estimate mode: SERP rank 없음
-                reason=f"[estimate:{estimate_bid}] {outcome.reason}",
+                rank_observed=decision_rank_observed,
+                reason=decision_reason,
                 bid_cap=eff.bid_cap,
             ),
         )

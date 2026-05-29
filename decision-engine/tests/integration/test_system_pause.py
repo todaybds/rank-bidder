@@ -5,11 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 from rank_bidder.db.connection import get_connection, write_transaction
 from rank_bidder.db.models import KeywordCreate, SiteCreate
 from rank_bidder.db.repositories import keywords, runtime_config, sites
 from rank_bidder.main import app
+
+
+@pytest.fixture(autouse=True)
+def _force_serp_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """cycle_full pause/resume 테스트는 SERP(Lambda mock) 경로 — serp 모드 고정.
+
+    2026-05-29: run_cycle 기본 모드 estimate 전환에 따른 명시 (API 전용 테스트엔 무영향).
+    """
+    monkeypatch.setenv("RANKBIDDER_CYCLE_MODE", "serp")
 
 
 def test_0008_creates_runtime_config_table(temp_db: Path) -> None:

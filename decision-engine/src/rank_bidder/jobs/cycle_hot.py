@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import os
+
 import structlog
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
@@ -19,8 +21,14 @@ log = structlog.get_logger(__name__)
 
 def run_hot_cycle(samples_n: int = 3) -> dict[str, int]:
     """1분 hot 사이클 — measurement only."""
-    bind_contextvars(job="cycle_hot")
     summary = {"scanned": 0, "measured": 0, "failed": 0}
+    # 2026-05-29: estimate 모드에선 SERP 측정 불가(검색 endpoint 차단) → hot cycle no-op.
+    # 5분 cycle_full의 avgRnk closed-loop이 실측/결정 담당. 매분 차단된 SERP 호출 + 실패
+    # 로그가 무의미하게 쌓이던 것 차단 (입찰엔 무해했으나 낭비). serp 모드 복귀 시 자동 재개.
+    if os.environ.get("RANKBIDDER_CYCLE_MODE", "estimate").strip().lower() == "estimate":
+        log.info("cycle_hot.skipped_estimate_mode")
+        return summary
+    bind_contextvars(job="cycle_hot")
     try:
         log.info("cycle_hot.started")
         with write_transaction() as conn:
