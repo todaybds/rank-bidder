@@ -108,35 +108,44 @@ def _normalize_stat(d: dict[str, Any]) -> dict[str, Any] | None:
 MIN_IMPRESSIONS_FOR_RANK = 30
 
 
-def fetch_today_avg_rank(
+#: 허용 datePreset — Naver stats API 기간 프리셋.
+VALID_DATE_PRESETS = ("today", "yesterday", "last7days", "last30days")
+
+
+def fetch_avg_rank(
     naver_id: str,
     *,
+    date_preset: str = "today",
     client: httpx.Client | None = None,
 ) -> tuple[float | None, int]:
-    """2026-05-28 — 오늘 평균 순위 (avgRnk) + 노출수 (impCnt) 동시 조회.
+    """주어진 기간(datePreset)의 평균 순위(avgRnk) + 노출수(impCnt) 조회. 2026-05-29.
 
-    Naver 공식 API라 SERP 차단 무관. cycle_full_estimate가 매 cycle 호출.
+    Naver 공식 API라 SERP 차단 무관. cycle_full_estimate가 폴백 체인(today→last7days)으로 호출.
 
     **노출수 검증 (silent stat 왜곡 차단)**:
-    - impCnt < ``MIN_IMPRESSIONS_FOR_RANK`` (30회) → avgRnk 신뢰 안 함, None 반환.
+    - impCnt < ``MIN_IMPRESSIONS_FOR_RANK`` (30회) → avgRnk 신뢰 안 함, ``(None, imp)``.
       100원 KW가 우연히 한두 번 노출돼서 avgRnk=2 박는 silent 왜곡 차단.
-    - impCnt >= 30 + avgRnk > 0 → float 반환.
+    - avgRnk=0/None (노출 0 또는 미집계) → ``(None, imp)``.
+    - impCnt >= 30 + avgRnk > 0 → ``(float, imp)``.
 
     Args:
         naver_id: nccKeywordId / nccAdgroupId.
+        date_preset: today / yesterday / last7days / last30days.
+            today는 네이버 집계 지연으로 낮엔 빌 수 있음 → caller가 last7days로 폴백.
         client: 테스트용.
 
     Returns:
-        ``(avg_rank, impressions)`` — 노출 부족 시 ``(None, impCnt)``.
-        대시보드는 None이면 "노출부족" 표시, 값 있으면 정수 round.
+        ``(avg_rank, impressions)`` — 노출 부족/데이터 없음 시 ``(None, impCnt)``.
     """
     if not naver_id or not isinstance(naver_id, str):
         raise ValueError(f"naver_id must be a non-empty string, got {naver_id!r}")
+    if date_preset not in VALID_DATE_PRESETS:
+        raise ValueError(f"date_preset must be one of {VALID_DATE_PRESETS}, got {date_preset!r}")
     params = {
         "id": naver_id,
         "fields": json.dumps(["avgRnk", "impCnt"]),
         "timeIncrement": "summary",
-        "datePreset": "today",
+        "datePreset": date_preset,
     }
     _, body = call_with_retry("GET", "/stats", params=params, client=client)
     stat = _extract_summary(body)
@@ -151,3 +160,12 @@ def fetch_today_avg_rank(
     if imp < MIN_IMPRESSIONS_FOR_RANK:
         return None, imp
     return float(avg), imp
+
+
+def fetch_today_avg_rank(
+    naver_id: str,
+    *,
+    client: httpx.Client | None = None,
+) -> tuple[float | None, int]:
+    """오늘 평균 순위 (avgRnk + impCnt) — ``fetch_avg_rank(date_preset="today")`` 래퍼 (하위호환)."""
+    return fetch_avg_rank(naver_id, date_preset="today", client=client)

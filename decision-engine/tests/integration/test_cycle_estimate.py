@@ -120,13 +120,18 @@ def test_worse_than_target_bids_up_and_puts(temp_db: Path) -> None:
 
 
 def test_low_impressions_falls_back_to_estimate(temp_db: Path) -> None:
-    """impCnt<30 → avgRnk 신뢰 불가(None) → estimate fallback path 사용."""
+    """오늘+7일 모두 impCnt<30 → avgRnk 신뢰 불가(None) → estimate fallback path 사용."""
     _seed(target_rank=2, bid_cap=10000)
     with (
-        # impCnt 부족 → fetch_today_avg_rank가 (None, imp) 반환
+        # 오늘 impCnt 부족 → (None, imp)
         patch(
             "rank_bidder.jobs.cycle_full.fetch_today_avg_rank",
             return_value=(None, 10),
+        ),
+        # 7일 누적도 부족 → (None, imp) → estimate로 최종 폴백
+        patch(
+            "rank_bidder.jobs.cycle_full.fetch_avg_rank",
+            return_value=(None, 12),
         ),
         patch("rank_bidder.jobs.cycle_full.average_position_bid", return_value=8000),
         patch("rank_bidder.jobs.cycle_full.sa_put_bid", new=MagicMock()) as mock_put,
@@ -139,3 +144,28 @@ def test_low_impressions_falls_back_to_estimate(temp_db: Path) -> None:
     assert dec["rank_observed"] is None  # estimate path → 실측 순위 없음
     assert "[estimate:8000]" in dec["reason"]
     assert mock_put.call_count == 1
+
+
+def test_today_empty_uses_7day_fallback(temp_db: Path) -> None:
+    """오늘 노출 0(집계 지연)인데 7일 avgRnk=1.0 → 7일 폴백으로 closed-loop 작동.
+
+    rank 1 < target 2(과달성) → BID_UP 아님(과입찰 방지). reason에 /7d 소스 표기.
+    """
+    _seed(target_rank=2, bid_cap=10000)
+    with (
+        # 오늘은 비어있음(네이버 집계 지연)
+        patch("rank_bidder.jobs.cycle_full.fetch_today_avg_rank", return_value=(None, 0)),
+        # 최근 7일 누적으로는 신뢰 가능한 1위
+        patch("rank_bidder.jobs.cycle_full.fetch_avg_rank", return_value=(1.0, 858)),
+        patch("rank_bidder.jobs.cycle_full.average_position_bid", return_value=15000),
+        patch("rank_bidder.jobs.cycle_full.sa_put_bid", new=MagicMock()) as mock_put,
+    ):
+        cycle_full.run_cycle()
+
+    dec = _last_decision()
+    assert dec["decision"] != "BID_UP"  # 이미 1위(목표 초과) → 안 올림
+    assert dec["new_bid"] <= PRIOR_BID
+    assert dec["rank_observed"] == 1  # 7일 실측 순위 박제
+    assert "[rank:1.0/7d]" in dec["reason"]  # 7일 폴백 소스 표기
+    if dec["decision"] == "BID_DOWN":
+        assert mock_put.call_count == 1

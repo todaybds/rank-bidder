@@ -45,7 +45,7 @@ from rank_bidder.lambda_client.serp import LambdaClientError, measure_keywords
 from rank_bidder.naver_sa.bid import put_bid as sa_put_bid
 from rank_bidder.naver_sa.estimate import average_position_bid
 from rank_bidder.naver_sa.exceptions import NaverKeywordDeleted, NaverSAError
-from rank_bidder.naver_sa.stats import fetch_today_avg_rank
+from rank_bidder.naver_sa.stats import fetch_avg_rank, fetch_today_avg_rank
 
 log = structlog.get_logger(__name__)
 
@@ -362,18 +362,28 @@ def _process_keyword_estimate(
         last_dec = decisions.list_for_keyword(conn, kw.id, limit=1)
     current_bid = last_dec[0].new_bid if last_dec else max(kw.bid_cap // 2, 100)
 
-    # Naver stats API로 오늘 평균 순위 (avgRnk + impCnt) 측정. SERP 차단 무관(공식 API).
-    # impCnt < 30이면 통계 왜곡 차단(None). 실패해도 결정 path는 계속 진행 (best-effort).
+    # Naver stats API 평균 순위(avgRnk) 측정 — SERP 차단 무관(공식 API). best-effort.
+    # 폴백 체인(2026-05-29): 오늘(today, impCnt>=30) → 최근7일(last7days, impCnt>=30).
+    # today는 네이버 집계 지연으로 낮엔 비고 저볼륨 KW는 오늘 노출 부족 → 7일 누적으로 신호 확보.
+    # 7일 avgRnk는 브랜드어 순위가 안정적이라 closed-loop 제어 신호로 적합 (둘 다 없으면 estimate).
     rank_int: int | None = None
+    rank_source: str | None = None
+    avg_rank: float | None = None
+    imp = 0
     try:
-        today_avg_rank, today_imp = fetch_today_avg_rank(kw.id)
+        avg_rank, imp = fetch_today_avg_rank(kw.id)
+        if avg_rank is not None:
+            rank_source = "today"
+        else:
+            week_avg, week_imp = fetch_avg_rank(kw.id, date_preset="last7days")
+            if week_avg is not None:
+                avg_rank, imp, rank_source = week_avg, week_imp, "7d"
     except Exception as exc:  # noqa: BLE001 — best-effort
         log.warning("cycle_estimate.stats_failed", keyword_id=kw.id, error=str(exc))
-        today_avg_rank = None
-        today_imp = 0
+        avg_rank, imp = None, 0
 
-    if today_avg_rank is not None:
-        rank_int = round(today_avg_rank)
+    if avg_rank is not None:
+        rank_int = round(avg_rank)
         with write_transaction() as conn:
             measurements.insert(
                 conn,
@@ -387,16 +397,17 @@ def _process_keyword_estimate(
         log.info(
             "cycle_estimate.rank_measured",
             keyword_id=kw.id,
-            avg_rank=today_avg_rank,
+            avg_rank=avg_rank,
             rank_int=rank_int,
-            impressions=today_imp,
+            impressions=imp,
+            source=rank_source,
         )
     else:
         log.info(
             "cycle_estimate.rank_not_measured",
             keyword_id=kw.id,
-            impressions=today_imp,
-            reason="impressions < 30" if today_imp > 0 else "no_data",
+            impressions=imp,
+            reason="impressions < 30" if imp > 0 else "no_data",
         )
 
     # estimate API 호출 (Naver Public API, 차단 무관, 광고비 0) — avgRnk(실측)가 없을 때
@@ -429,7 +440,7 @@ def _process_keyword_estimate(
         estimate_error = True
 
     # avgRnk(실측)도 없고 estimate도 못 받음 → 신호 0 → FAILED (돈 안 씀).
-    if today_avg_rank is None and estimate_bid is None and estimate_error:
+    if avg_rank is None and estimate_bid is None and estimate_error:
         with write_transaction() as conn:
             cycle_entries.upsert(
                 conn, CycleEntryCreate(cycle_id=cycle_id, keyword_id=kw.id, state="FAILED")
@@ -444,15 +455,16 @@ def _process_keyword_estimate(
 
     # 결정 — avgRnk(실측 순위)가 신뢰 가능하면 closed-loop(decide_by_rank), 아니면 estimate
     # fallback. 2026-05-29 과입찰 근본 해법: 측정된 순위가 목표 이상이면 BID_UP 안 함.
-    if today_avg_rank is not None:
+    if avg_rank is not None:
         outcome = decide_by_rank(
-            avg_rank=today_avg_rank,
+            avg_rank=avg_rank,
             target_rank=eff.target_rank,
             current_bid=current_bid,
             bid_cap=eff.bid_cap,
         )
-        # 대시보드 recommended_cap 유지 위해 estimate 추정가를 reason에 부기.
-        decision_reason = f"[rank:{today_avg_rank:.1f}] {outcome.reason}" + (
+        # reason에 측정 소스(today/7d) + estimate 추정가 부기 (대시보드 recommended_cap 유지).
+        src_tag = "/7d" if rank_source == "7d" else ""
+        decision_reason = f"[rank:{avg_rank:.1f}{src_tag}] {outcome.reason}" + (
             f" (estimate {estimate_bid})" if estimate_bid is not None else ""
         )
         decision_rank_observed = rank_int
